@@ -413,6 +413,10 @@ void hkaSplineDecompressor::Assign(
   blocks.resize(blockOffsets.size());
   int cBlock = 0;
 
+  if (blockOffsets.size() != input->GetNumBlocks()) {
+    throw std::runtime_error("Number of blocks != number of block offsets");
+  }
+
   for (auto &b : blocks) {
     b.Assign(data + *(blockOffsets.data() + cBlock),
              input->GetNumOfTransformTracks(), input->GetNumOfFloatTracks());

@@ -21,6 +21,7 @@
 #include "spike/io/binreader.hpp"
 #include "spike/io/binwritter.hpp"
 #include "spike/master_printer.hpp"
+#include "spike/type/pointer.hpp"
 #include <map>
 
 template <class C> void PtrGuard(const C *val) {
@@ -235,6 +236,7 @@ ReadFunc Read<CompileFourCC("PTCH")> =
       PtrGuard(holder);
       PtrGuard(root);
       hkCompendiumData &cData = root->Compendium();
+      bool dataIsX64 = true;
 
       if (!cData.weldedClassNames.size()) {
         throw std::runtime_error("File is missing type infos.");
@@ -262,21 +264,45 @@ ReadFunc Read<CompileFourCC("PTCH")> =
           if (isHKRelArray) {
             uint32 *retarget =
                 reinterpret_cast<uint32 *>(&root->dataBuffer[0] + cPointer);
-            const classEntryFixup &xfix = cData.classEntries[*retarget];
+            const uint32 index = *retarget;
+            if (index >= cData.classEntries.size()) {
+              continue;
+            }
+
+            const classEntryFixup &xfix = cData.classEntries[index];
 
             uint16 *relRetarget = reinterpret_cast<uint16 *>(retarget);
             *relRetarget = xfix.tag - cPointer;
             *(relRetarget + 1) = xfix.count;
           } else {
-            uint64 *retarget =
-                reinterpret_cast<uint64 *>(&root->dataBuffer[0] + cPointer);
-            const classEntryFixup &xfix = cData.classEntries[*retarget];
+            char *pointerData = &root->dataBuffer[0] + cPointer;
+            uint64 *retarget64 = reinterpret_cast<uint64 *>(pointerData);
+            uint32 *retarget32 = reinterpret_cast<uint32 *>(pointerData);
+            const uint64 index64 = *retarget64;
+            const uint32 index32 = *retarget32;
 
-            *retarget =
-                reinterpret_cast<uint64>(xfix.tag + root->dataBuffer.data());
+            const bool canUse64 = index64 < cData.classEntries.size();
+            const bool canUse32 = index32 < cData.classEntries.size();
+            const bool use32 = !canUse64 && canUse32;
 
-            if (isHKArray) {
-              *(retarget + 1) = xfix.count;
+            if (use32) {
+              dataIsX64 = false;
+              const classEntryFixup &xfix = cData.classEntries[index32];
+              auto *retargetX86 =
+                  reinterpret_cast<es::PointerX86<char> *>(pointerData);
+              *retargetX86 = xfix.tag + root->dataBuffer.data();
+
+              if (isHKArray) {
+                *(retarget32 + 1) = xfix.count;
+              }
+            } else if (canUse64) {
+              const classEntryFixup &xfix = cData.classEntries[index64];
+              *retarget64 =
+                  reinterpret_cast<uint64>(xfix.tag + root->dataBuffer.data());
+
+              if (isHKArray) {
+                *(retarget64 + 1) = xfix.count;
+              }
             }
           }
         }
@@ -291,7 +317,7 @@ ReadFunc Read<CompileFourCC("PTCH")> =
 
         std::string_view clName = cData.weldedClassNames[clsID].className;
         const JenHash chash(clName);
-        CRule rule(root->toolset, false, 8); // No way to detect so far
+        CRule rule(root->toolset, false, dataIsX64);
         IhkVirtualClass *clsn = hkVirtualClass::Create(chash, rule);
         auto cls = const_cast<hkVirtualClass *>(
             safe_deref_cast<const hkVirtualClass>(clsn));

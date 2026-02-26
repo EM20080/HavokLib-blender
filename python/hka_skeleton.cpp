@@ -40,9 +40,11 @@ PyObject *hkaPartitionPy::New(PyTypeObject *type, PyObject *, PyObject *) {
 }
 
 int hkaPartitionPy::Init(hkaPartitionPy *self, PyObject *args, PyObject *kwds) {
-  static char *kwList[] = {"name", "start_bone_index", "num_bones", nullptr};
+  static const char *kwList[] = {"name", "start_bone_index", "num_bones",
+                                 nullptr};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|UII", kwList, &self->name,
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|UII",
+                                   const_cast<char **>(kwList), &self->name,
                                    &self->startBoneIndex, &self->numBones)) {
     return -1;
   }

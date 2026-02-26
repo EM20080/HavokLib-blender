@@ -288,7 +288,7 @@ void hkxSectionHeader::LinkBuffer86() {
   for (auto &gf : globalFixups) {
     if (gf.pointer != -1) {
       ptrType *ptrPtr = reinterpret_cast<ptrType *>(sectionBuffer + gf.pointer);
-      *ptrPtr = sectionBuffer + gf.destination;
+      *ptrPtr = &header->sections[gf.sectionid].buffer[0] + gf.destination;
     }
   }
 

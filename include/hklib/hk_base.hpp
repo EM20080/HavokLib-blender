@@ -52,6 +52,21 @@ struct hkxEnvironment;
 struct hkaBoneAttachment;
 struct hkaMeshBinding;
 struct hkaAnnotationTrack;
+struct hkpPhysicsData;
+struct hkpPhysicsSystem;
+struct hkpRigidBody;
+struct hkpShape;
+struct hkpMoppCode;
+struct hkpMoppBvTreeShape;
+struct hkpStorageExtendedMeshShape;
+struct hkpStorageExtendedMeshShapeMeshSubpartStorage;
+struct hkpStorageExtendedMeshShapeShapeSubpartStorage;
+struct hkpListShape;
+struct hkpConvexTransformShape;
+struct hkpConvexTranslateShape;
+struct hkpBoxShape;
+struct hkpCylinderShape;
+struct hkpConvexVerticesShape;
 
 struct IhkVirtualClass {
   virtual const void *GetPointer() const = 0;
@@ -66,6 +81,29 @@ struct IhkVirtualClass {
   virtual operator hkaBoneAttachment const *() const { return nullptr; }
   virtual operator hkaMeshBinding const *() const { return nullptr; }
   virtual operator hkaAnnotationTrack const *() const { return nullptr; }
+  virtual operator hkpPhysicsData const *() const { return nullptr; }
+  virtual operator hkpPhysicsSystem const *() const { return nullptr; }
+  virtual operator hkpRigidBody const *() const { return nullptr; }
+  virtual operator hkpShape const *() const { return nullptr; }
+  virtual operator hkpMoppCode const *() const { return nullptr; }
+  virtual operator hkpMoppBvTreeShape const *() const { return nullptr; }
+  virtual operator hkpStorageExtendedMeshShape const *() const {
+    return nullptr;
+  }
+  virtual operator hkpStorageExtendedMeshShapeMeshSubpartStorage const *()
+      const {
+    return nullptr;
+  }
+  virtual operator hkpStorageExtendedMeshShapeShapeSubpartStorage const *()
+      const {
+    return nullptr;
+  }
+  virtual operator hkpListShape const *() const { return nullptr; }
+  virtual operator hkpConvexTransformShape const *() const { return nullptr; }
+  virtual operator hkpConvexTranslateShape const *() const { return nullptr; }
+  virtual operator hkpBoxShape const *() const { return nullptr; }
+  virtual operator hkpCylinderShape const *() const { return nullptr; }
+  virtual operator hkpConvexVerticesShape const *() const { return nullptr; }
   virtual ~IhkVirtualClass() = default;
 };
 

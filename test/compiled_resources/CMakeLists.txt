@@ -5,7 +5,7 @@ function(create_arc arcPath tocData)
   set(arcToc ${arcPath}.toc)
   file(WRITE ${arcToc} ${tocData})
 
-  if(${CMAKE_MINOR_VERSION} LESS 13)
+  if(CMAKE_VERSION VERSION_LESS "3.13")
     execute_process(
       COMMAND ${CMAKE_COMMAND} -E tar c ${arcPath}.d --files-from=${arcToc}
       WORKING_DIRECTORY ${PARENT_DIRECTORY})
@@ -21,7 +21,7 @@ endfunction()
 
 function(extract_arc arcPath)
   message("Extracting resource archive")
-  if(${CMAKE_MINOR_VERSION} LESS 13)
+  if(CMAKE_VERSION VERSION_LESS "3.13")
     execute_process(COMMAND zstd -fd ${arcPath} -o ${arcPath}.d
                     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set(arcPath ${arcPath}.d)

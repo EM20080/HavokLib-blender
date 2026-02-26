@@ -50,9 +50,10 @@ PyObject *hkNamedVariantPy::New(PyTypeObject *type, PyObject *, PyObject *) {
 
 int hkNamedVariantPy::Init(hkNamedVariantPy *self, PyObject *args,
                            PyObject *kwds) {
-  static char *kwList[] = {"name", "class_name", "object", nullptr};
+  static const char *kwList[] = {"name", "class_name", "object", nullptr};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|UUO", kwList, &self->name,
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|UUO",
+                                   const_cast<char **>(kwList), &self->name,
                                    &self->className, &self->object)) {
     return -1;
   }

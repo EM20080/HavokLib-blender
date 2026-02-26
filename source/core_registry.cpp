@@ -27,6 +27,7 @@
 #include "internal/hka_splineanimation.hpp"
 #include "internal/hka_waveletanimation.hpp"
 #include "internal/hkx_environment.hpp"
+#include "internal/hkp_collision.hpp"
 #include <map>
 
 #define hkRegisterCreator(cname)                                               \
@@ -47,7 +48,13 @@ static const std::map<JenHash, IhkVirtualClass *(*)(CRule)> hkConstrRegistry{
               hkaSkeleton, hkaSplineCompressedAnimation,
               hkaDeltaCompressedAnimation, hkaWaveletCompressedAnimation,
               hkaAnimationContainer, hkaDefaultAnimatedReferenceFrame,
-              hkaAnimationBinding, hkaLosslessCompressedAnimation)};
+              hkaAnimationBinding, hkaLosslessCompressedAnimation,
+              hkpPhysicsData, hkpPhysicsSystem, hkpRigidBody, hkpShape,
+              hkpMoppCode, hkpMoppBvTreeShape, hkpStorageExtendedMeshShape,
+              hkpStorageExtendedMeshShapeMeshSubpartStorage,
+              hkpStorageExtendedMeshShapeShapeSubpartStorage, hkpListShape,
+              hkpConvexTransformShape, hkpConvexTranslateShape, hkpBoxShape,
+              hkpCylinderShape, hkpConvexVerticesShape)};
 
 IhkVirtualClass *hkVirtualClass::Create(JenHash hash, CRule rule) {
   auto found = hkConstrRegistry.find(hash);

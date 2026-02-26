@@ -22,8 +22,15 @@ if(NOT NO_OBJECTS)
     NO_VERINFO
     NO_PROJECT_H)
 
-    target_compile_options(havok-objects PRIVATE -fvisibility=hidden)
+    if(NOT MSVC)
+      target_compile_options(havok-objects PRIVATE -fvisibility=hidden)
+    endif()
     target_expose_defs(havok HK_EXPORT HK_IMPORT)
+
+  add_library(havok STATIC)
+  target_sources(havok PRIVATE $<TARGET_OBJECTS:havok-objects>)
+  target_link_libraries(havok PUBLIC havok-interface spike pugixml)
+  install(TARGETS havok ARCHIVE DESTINATION lib)
 endif()
 
 if(BUILD_SHARED_LIBS)

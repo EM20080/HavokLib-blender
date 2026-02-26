@@ -236,7 +236,7 @@ ReadFunc Read<CompileFourCC("PTCH")> =
       PtrGuard(holder);
       PtrGuard(root);
       hkCompendiumData &cData = root->Compendium();
-      bool dataIsX64 = true;
+      bool datais64bit = true;
 
       if (!cData.weldedClassNames.size()) {
         throw std::runtime_error("File is missing type infos.");
@@ -286,7 +286,7 @@ ReadFunc Read<CompileFourCC("PTCH")> =
             const bool use32 = !canUse64 && canUse32;
 
             if (use32) {
-              dataIsX64 = false;
+              datais64bit = false;
               const classEntryFixup &xfix = cData.classEntries[index32];
               auto *retargetX86 =
                   reinterpret_cast<es::PointerX86<char> *>(pointerData);
@@ -317,7 +317,7 @@ ReadFunc Read<CompileFourCC("PTCH")> =
 
         std::string_view clName = cData.weldedClassNames[clsID].className;
         const JenHash chash(clName);
-        CRule rule(root->toolset, false, dataIsX64);
+        CRule rule(root->toolset, false, datais64bit);
         IhkVirtualClass *clsn = hkVirtualClass::Create(chash, rule);
         auto cls = const_cast<hkVirtualClass *>(
             safe_deref_cast<const hkVirtualClass>(clsn));

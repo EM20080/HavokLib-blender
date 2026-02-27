@@ -3,6 +3,7 @@
 
 *hkaWaveletDecompressor*
 
+.vs/
 .vscode/
 .cache/
 build/

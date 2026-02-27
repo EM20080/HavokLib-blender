@@ -104,6 +104,8 @@ const std::map<hkToolset, xmlToolsetProp> xmlToolsetProps = {
      xmlToolsetProp{xmlToolsetProp::TopLevelObject, 9, "hk_2012.2.0-r1"}},
     {HK2013,
      xmlToolsetProp{xmlToolsetProp::TopLevelObject, 9, "hk_2013.1.0-r1"}},
+    {HK2013_2,
+     xmlToolsetProp{xmlToolsetProp::TopLevelObject, 9, "hk_2013.2.0-r1"}},
     {HK2014, xmlToolsetProp{{xmlToolsetProp::TopLevelObject,
                              xmlToolsetProp::MaxPredicate},
                             11,

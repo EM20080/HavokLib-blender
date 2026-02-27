@@ -23,6 +23,7 @@
 #include "internal/hka_defaultanimrefframe.hpp"
 #include "internal/hka_deltaanimation.hpp"
 #include "internal/hka_interleavedanimation.hpp"
+#include "internal/hka_quantizedanimation.hpp"
 #include "internal/hka_skeleton.hpp"
 #include "internal/hka_splineanimation.hpp"
 #include "internal/hka_waveletanimation.hpp"
@@ -47,6 +48,7 @@ static const std::map<JenHash, IhkVirtualClass *(*)(CRule)> hkConstrRegistry{
     StaticFor(hkRegisterCreator, hkRootLevelContainer, hkxEnvironment,
               hkaSkeleton, hkaSplineCompressedAnimation,
               hkaDeltaCompressedAnimation, hkaWaveletCompressedAnimation,
+              hkaQuantizedAnimation,
               hkaAnimationContainer, hkaDefaultAnimatedReferenceFrame,
               hkaAnimationBinding, hkaLosslessCompressedAnimation,
               hkpPhysicsData, hkpPhysicsSystem, hkpRigidBody, hkpShape,

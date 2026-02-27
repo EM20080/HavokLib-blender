@@ -40,171 +40,171 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   hkaAnimation::Interface BasehkaAnimation() const {
-    int16 off = m(basehkaAnimation); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::basehkaAnimation); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Pointer<float> DynamicTranslationsPtr() {
-    int16 off = m(dynamicTranslations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::dynamicTranslations); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   float *DynamicTranslations() {
-    int16 off = m(dynamicTranslations); if (off == -1) return nullptr;
+    int16 off = m(Members::dynamicTranslations); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
   const float *DynamicTranslations() const {
-    int16 off = m(dynamicTranslations); if (off == -1) return nullptr;
+    int16 off = m(Members::dynamicTranslations); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
-  uint32 NumDynamicTranslations() const { return m(numDynamicTranslations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numDynamicTranslations)); }
+  uint32 NumDynamicTranslations() const { return m(Members::numDynamicTranslations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numDynamicTranslations)); }
   Pointer<float> StaticTranslationsPtr() {
-    int16 off = m(staticTranslations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::staticTranslations); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   float *StaticTranslations() {
-    int16 off = m(staticTranslations); if (off == -1) return nullptr;
+    int16 off = m(Members::staticTranslations); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
   const float *StaticTranslations() const {
-    int16 off = m(staticTranslations); if (off == -1) return nullptr;
+    int16 off = m(Members::staticTranslations); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
-  uint32 NumStaticTranslations() const { return m(numStaticTranslations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numStaticTranslations)); }
+  uint32 NumStaticTranslations() const { return m(Members::numStaticTranslations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numStaticTranslations)); }
   Pointer<USVector4> TranslationTypeAndOffsetsPtr() {
-    int16 off = m(translationTypeAndOffsets); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::translationTypeAndOffsets); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   USVector4 *TranslationTypeAndOffsets() {
-    int16 off = m(translationTypeAndOffsets); if (off == -1) return nullptr;
+    int16 off = m(Members::translationTypeAndOffsets); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<USVector4**>(data + off);
     return *reinterpret_cast<es::PointerX86<USVector4>*>(data + off);
   }
   const USVector4 *TranslationTypeAndOffsets() const {
-    int16 off = m(translationTypeAndOffsets); if (off == -1) return nullptr;
+    int16 off = m(Members::translationTypeAndOffsets); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<USVector4**>(data + off);
     return *reinterpret_cast<es::PointerX86<USVector4>*>(data + off);
   }
-  uint32 NumTranslationTypeAndOffsets() const { return m(numTranslationTypeAndOffsets) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numTranslationTypeAndOffsets)); }
+  uint32 NumTranslationTypeAndOffsets() const { return m(Members::numTranslationTypeAndOffsets) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numTranslationTypeAndOffsets)); }
   Pointer<Vector4A16> DynamicRotationsPtr() {
-    int16 off = m(dynamicRotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::dynamicRotations); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Vector4A16 *DynamicRotations() {
-    int16 off = m(dynamicRotations); if (off == -1) return nullptr;
+    int16 off = m(Members::dynamicRotations); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<Vector4A16**>(data + off);
     return *reinterpret_cast<es::PointerX86<Vector4A16>*>(data + off);
   }
   const Vector4A16 *DynamicRotations() const {
-    int16 off = m(dynamicRotations); if (off == -1) return nullptr;
+    int16 off = m(Members::dynamicRotations); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<Vector4A16**>(data + off);
     return *reinterpret_cast<es::PointerX86<Vector4A16>*>(data + off);
   }
-  uint32 NumDynamicRotations() const { return m(numDynamicRotations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numDynamicRotations)); }
+  uint32 NumDynamicRotations() const { return m(Members::numDynamicRotations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numDynamicRotations)); }
   Pointer<Vector4A16> StaticRotationsPtr() {
-    int16 off = m(staticRotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::staticRotations); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Vector4A16 *StaticRotations() {
-    int16 off = m(staticRotations); if (off == -1) return nullptr;
+    int16 off = m(Members::staticRotations); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<Vector4A16**>(data + off);
     return *reinterpret_cast<es::PointerX86<Vector4A16>*>(data + off);
   }
   const Vector4A16 *StaticRotations() const {
-    int16 off = m(staticRotations); if (off == -1) return nullptr;
+    int16 off = m(Members::staticRotations); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<Vector4A16**>(data + off);
     return *reinterpret_cast<es::PointerX86<Vector4A16>*>(data + off);
   }
-  uint32 NumStaticRotations() const { return m(numStaticRotations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numStaticRotations)); }
+  uint32 NumStaticRotations() const { return m(Members::numStaticRotations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numStaticRotations)); }
   Pointer<uint16> RotationTypeAndOffsetsPtr() {
-    int16 off = m(rotationTypeAndOffsets); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::rotationTypeAndOffsets); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   uint16 *RotationTypeAndOffsets() {
-    int16 off = m(rotationTypeAndOffsets); if (off == -1) return nullptr;
+    int16 off = m(Members::rotationTypeAndOffsets); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<uint16**>(data + off);
     return *reinterpret_cast<es::PointerX86<uint16>*>(data + off);
   }
   const uint16 *RotationTypeAndOffsets() const {
-    int16 off = m(rotationTypeAndOffsets); if (off == -1) return nullptr;
+    int16 off = m(Members::rotationTypeAndOffsets); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<uint16**>(data + off);
     return *reinterpret_cast<es::PointerX86<uint16>*>(data + off);
   }
-  uint32 NumRotationTypeAndOffsets() const { return m(numRotationTypeAndOffsets) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numRotationTypeAndOffsets)); }
+  uint32 NumRotationTypeAndOffsets() const { return m(Members::numRotationTypeAndOffsets) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numRotationTypeAndOffsets)); }
   Pointer<float> DynamicScalesPtr() {
-    int16 off = m(dynamicScales); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::dynamicScales); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   float *DynamicScales() {
-    int16 off = m(dynamicScales); if (off == -1) return nullptr;
+    int16 off = m(Members::dynamicScales); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
   const float *DynamicScales() const {
-    int16 off = m(dynamicScales); if (off == -1) return nullptr;
+    int16 off = m(Members::dynamicScales); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
-  uint32 NumDynamicScales() const { return m(numDynamicScales) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numDynamicScales)); }
+  uint32 NumDynamicScales() const { return m(Members::numDynamicScales) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numDynamicScales)); }
   Pointer<float> StaticScalesPtr() {
-    int16 off = m(staticScales); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::staticScales); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   float *StaticScales() {
-    int16 off = m(staticScales); if (off == -1) return nullptr;
+    int16 off = m(Members::staticScales); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
   const float *StaticScales() const {
-    int16 off = m(staticScales); if (off == -1) return nullptr;
+    int16 off = m(Members::staticScales); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
-  uint32 NumStaticScales() const { return m(numStaticScales) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numStaticScales)); }
+  uint32 NumStaticScales() const { return m(Members::numStaticScales) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numStaticScales)); }
   Pointer<USVector4> ScaleTypeAndOffsetsPtr() {
-    int16 off = m(scaleTypeAndOffsets); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::scaleTypeAndOffsets); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   USVector4 *ScaleTypeAndOffsets() {
-    int16 off = m(scaleTypeAndOffsets); if (off == -1) return nullptr;
+    int16 off = m(Members::scaleTypeAndOffsets); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<USVector4**>(data + off);
     return *reinterpret_cast<es::PointerX86<USVector4>*>(data + off);
   }
   const USVector4 *ScaleTypeAndOffsets() const {
-    int16 off = m(scaleTypeAndOffsets); if (off == -1) return nullptr;
+    int16 off = m(Members::scaleTypeAndOffsets); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<USVector4**>(data + off);
     return *reinterpret_cast<es::PointerX86<USVector4>*>(data + off);
   }
-  uint32 NumScaleTypeAndOffsets() const { return m(numScaleTypeAndOffsets) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numScaleTypeAndOffsets)); }
+  uint32 NumScaleTypeAndOffsets() const { return m(Members::numScaleTypeAndOffsets) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numScaleTypeAndOffsets)); }
   Pointer<float> FloatsPtr() {
-    int16 off = m(floats); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::floats); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   float *Floats() {
-    int16 off = m(floats); if (off == -1) return nullptr;
+    int16 off = m(Members::floats); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
   const float *Floats() const {
-    int16 off = m(floats); if (off == -1) return nullptr;
+    int16 off = m(Members::floats); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
-  uint32 NumFloats() const { return m(numFloats) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numFloats)); }
-  uint32 NumFrames() const { return m(numFrames) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numFrames)); }
-  void NumDynamicTranslations(uint32 value) { if (m(numDynamicTranslations) >= 0) *reinterpret_cast<uint32*>(data + m(numDynamicTranslations)) = value; }
-  void NumStaticTranslations(uint32 value) { if (m(numStaticTranslations) >= 0) *reinterpret_cast<uint32*>(data + m(numStaticTranslations)) = value; }
-  void NumTranslationTypeAndOffsets(uint32 value) { if (m(numTranslationTypeAndOffsets) >= 0) *reinterpret_cast<uint32*>(data + m(numTranslationTypeAndOffsets)) = value; }
-  void NumDynamicRotations(uint32 value) { if (m(numDynamicRotations) >= 0) *reinterpret_cast<uint32*>(data + m(numDynamicRotations)) = value; }
-  void NumStaticRotations(uint32 value) { if (m(numStaticRotations) >= 0) *reinterpret_cast<uint32*>(data + m(numStaticRotations)) = value; }
-  void NumRotationTypeAndOffsets(uint32 value) { if (m(numRotationTypeAndOffsets) >= 0) *reinterpret_cast<uint32*>(data + m(numRotationTypeAndOffsets)) = value; }
-  void NumDynamicScales(uint32 value) { if (m(numDynamicScales) >= 0) *reinterpret_cast<uint32*>(data + m(numDynamicScales)) = value; }
-  void NumStaticScales(uint32 value) { if (m(numStaticScales) >= 0) *reinterpret_cast<uint32*>(data + m(numStaticScales)) = value; }
-  void NumScaleTypeAndOffsets(uint32 value) { if (m(numScaleTypeAndOffsets) >= 0) *reinterpret_cast<uint32*>(data + m(numScaleTypeAndOffsets)) = value; }
-  void NumFloats(uint32 value) { if (m(numFloats) >= 0) *reinterpret_cast<uint32*>(data + m(numFloats)) = value; }
-  void NumFrames(uint32 value) { if (m(numFrames) >= 0) *reinterpret_cast<uint32*>(data + m(numFrames)) = value; }
+  uint32 NumFloats() const { return m(Members::numFloats) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numFloats)); }
+  uint32 NumFrames() const { return m(Members::numFrames) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numFrames)); }
+  void NumDynamicTranslations(uint32 value) { if (m(Members::numDynamicTranslations) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numDynamicTranslations)) = value; }
+  void NumStaticTranslations(uint32 value) { if (m(Members::numStaticTranslations) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numStaticTranslations)) = value; }
+  void NumTranslationTypeAndOffsets(uint32 value) { if (m(Members::numTranslationTypeAndOffsets) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numTranslationTypeAndOffsets)) = value; }
+  void NumDynamicRotations(uint32 value) { if (m(Members::numDynamicRotations) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numDynamicRotations)) = value; }
+  void NumStaticRotations(uint32 value) { if (m(Members::numStaticRotations) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numStaticRotations)) = value; }
+  void NumRotationTypeAndOffsets(uint32 value) { if (m(Members::numRotationTypeAndOffsets) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numRotationTypeAndOffsets)) = value; }
+  void NumDynamicScales(uint32 value) { if (m(Members::numDynamicScales) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numDynamicScales)) = value; }
+  void NumStaticScales(uint32 value) { if (m(Members::numStaticScales) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numStaticScales)) = value; }
+  void NumScaleTypeAndOffsets(uint32 value) { if (m(Members::numScaleTypeAndOffsets) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numScaleTypeAndOffsets)) = value; }
+  void NumFloats(uint32 value) { if (m(Members::numFloats) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numFloats)) = value; }
+  void NumFrames(uint32 value) { if (m(Members::numFrames) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numFrames)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

@@ -22,6 +22,10 @@ void hkaAniTrackHandle::GetValue(uni::RTSValue &output, float time) const {
   hdl->GetValue(output, time, index);
 }
 
+size_t hkaAniTrackHandle::BoneIndex() const {
+  return hdl ? hdl->BoneIndex(index) : index;
+}
+
 // https://en.wikipedia.org/wiki/Slerp
 static Vector4A16 SLerp(const Vector4A16 &v0, const Vector4A16 &_v1, float t) {
   Vector4A16 v1 = _v1;

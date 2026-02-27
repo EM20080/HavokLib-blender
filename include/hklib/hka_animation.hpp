@@ -21,6 +21,7 @@
 
 struct hkaAnimatedReferenceFrame;
 struct hkaAnnotationTrack;
+struct hkaSkeleton;
 
 using hkaAnnotationTrackPtr = uni::Element<hkaAnnotationTrack>;
 
@@ -44,6 +45,7 @@ struct hkaAnimation : uni::Motion, IhkVirtualClass {
   virtual const hkaAnimatedReferenceFrame *GetExtractedMotion() const = 0;
   virtual size_t GetNumAnnotations() const = 0;
   virtual hkaAnnotationTrackPtr GetAnnotation(size_t id) const = 0;
+  virtual void SetReferenceSkeleton(const hkaSkeleton *) {}
 
   typedef uni::VirtualIteratorProxy<
       hkaAnimation, &hkaAnimation::GetNumAnnotations, hkaAnnotationTrackPtr,

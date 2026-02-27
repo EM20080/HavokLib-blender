@@ -31,89 +31,89 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<Pointer<char>> SkeletonsPtr() {
-    int16 off = m(skeletons); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::skeletons); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<Pointer<char>> Skeletons() {
-    int16 off = m(skeletons); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::skeletons); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<Pointer<char>> Skeletons() const {
-    int16 off = m(skeletons); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::skeletons); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumSkeletons() const { return m(numSkeletons) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numSkeletons)); }
+  uint32 NumSkeletons() const { return m(Members::numSkeletons) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numSkeletons)); }
   Pointer<Pointer<char>> AnimationsPtr() {
-    int16 off = m(animations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::animations); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<Pointer<char>> Animations() {
-    int16 off = m(animations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::animations); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<Pointer<char>> Animations() const {
-    int16 off = m(animations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::animations); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumAnimations() const { return m(numAnimations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numAnimations)); }
+  uint32 NumAnimations() const { return m(Members::numAnimations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numAnimations)); }
   Pointer<Pointer<char>> BindingsPtr() {
-    int16 off = m(bindings); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::bindings); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<Pointer<char>> Bindings() {
-    int16 off = m(bindings); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::bindings); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<Pointer<char>> Bindings() const {
-    int16 off = m(bindings); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::bindings); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumBindings() const { return m(numBindings) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numBindings)); }
+  uint32 NumBindings() const { return m(Members::numBindings) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numBindings)); }
   Pointer<Pointer<char>> AttachmentsPtr() {
-    int16 off = m(attachments); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::attachments); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<Pointer<char>> Attachments() {
-    int16 off = m(attachments); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::attachments); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<Pointer<char>> Attachments() const {
-    int16 off = m(attachments); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::attachments); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumAttachments() const { return m(numAttachments) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numAttachments)); }
+  uint32 NumAttachments() const { return m(Members::numAttachments) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numAttachments)); }
   Pointer<Pointer<char>> SkinsPtr() {
-    int16 off = m(skins); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::skins); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<Pointer<char>> Skins() {
-    int16 off = m(skins); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::skins); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<Pointer<char>> Skins() const {
-    int16 off = m(skins); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::skins); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumSkins() const { return m(numSkins) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numSkins)); }
+  uint32 NumSkins() const { return m(Members::numSkins) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numSkins)); }
   hkReferenceObject::Interface BasehkReferenceObject() const {
-    int16 off = m(basehkReferenceObject); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::basehkReferenceObject); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
-  void NumSkeletons(uint32 value) { if (m(numSkeletons) >= 0) *reinterpret_cast<uint32*>(data + m(numSkeletons)) = value; }
-  void NumAnimations(uint32 value) { if (m(numAnimations) >= 0) *reinterpret_cast<uint32*>(data + m(numAnimations)) = value; }
-  void NumBindings(uint32 value) { if (m(numBindings) >= 0) *reinterpret_cast<uint32*>(data + m(numBindings)) = value; }
-  void NumAttachments(uint32 value) { if (m(numAttachments) >= 0) *reinterpret_cast<uint32*>(data + m(numAttachments)) = value; }
-  void NumSkins(uint32 value) { if (m(numSkins) >= 0) *reinterpret_cast<uint32*>(data + m(numSkins)) = value; }
+  void NumSkeletons(uint32 value) { if (m(Members::numSkeletons) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numSkeletons)) = value; }
+  void NumAnimations(uint32 value) { if (m(Members::numAnimations) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numAnimations)) = value; }
+  void NumBindings(uint32 value) { if (m(Members::numBindings) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numBindings)) = value; }
+  void NumAttachments(uint32 value) { if (m(Members::numAttachments) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numAttachments)) = value; }
+  void NumSkins(uint32 value) { if (m(Members::numSkins) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numSkins)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

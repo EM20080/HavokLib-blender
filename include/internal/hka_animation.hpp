@@ -31,7 +31,7 @@ struct hkaAniTrackHandle : uni::MotionTrack {
   TrackType_e TrackType() const override {
     return uni::MotionTrack::PositionRotationScale;
   }
-  size_t BoneIndex() const override { return index; }
+  size_t BoneIndex() const override;
   void GetValue(uni::RTSValue &output, float time) const override;
 };
 
@@ -50,6 +50,7 @@ struct hkaAniTrackHandleList : uni::List<uni::MotionTrack> {
 
 struct hkaDeltaCompressedAnimationInternalInterface;
 struct hkaInterleavedAnimationInternalInterface;
+struct hkaQuantizedAnimationInternalInterface;
 struct hkaSplineCompressedAnimationInternalInterface;
 struct hkaWaveletCompressedAnimationInternalInterface;
 
@@ -60,6 +61,7 @@ struct hkaAnimationInternalInterface : hkaAnimation, hkVirtualClass {
 
   virtual operator hkaDeltaCompressedAnimationInternalInterface const *() const { return nullptr; }
   virtual operator hkaInterleavedAnimationInternalInterface const *() const { return nullptr; }
+  virtual operator hkaQuantizedAnimationInternalInterface const *() const { return nullptr; }
   virtual operator hkaSplineCompressedAnimationInternalInterface const *() const { return nullptr; }
   virtual operator hkaWaveletCompressedAnimationInternalInterface const *() const { return nullptr; }
   operator hkaAnimation const *() const override { return this; }
@@ -67,6 +69,7 @@ struct hkaAnimationInternalInterface : hkaAnimation, hkVirtualClass {
 
   virtual void GetValue(uni::RTSValue &output, float time,
                         size_t trackID) const = 0;
+  virtual size_t BoneIndex(size_t trackID) const { return trackID; }
   void ToXML(XMLHandle hdl) const override;
 
   uint32 FrameRate() const override { return frameRate; }

@@ -29,11 +29,11 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   hkReferenceObject::Interface BasehkReferenceObject() const {
-    int16 off = m(basehkReferenceObject); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::basehkReferenceObject); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
-  hkaAnimatedReferenceFrameType FrameType() const { return m(frameType) == -1 ? hkaAnimatedReferenceFrameType{} : *reinterpret_cast<hkaAnimatedReferenceFrameType*>(data + m(frameType)); }
-  void FrameType(hkaAnimatedReferenceFrameType value) { if (m(frameType) >= 0) *reinterpret_cast<hkaAnimatedReferenceFrameType*>(data + m(frameType)) = value; }
+  hkaAnimatedReferenceFrameType FrameType() const { return m(Members::frameType) == -1 ? hkaAnimatedReferenceFrameType{} : *reinterpret_cast<hkaAnimatedReferenceFrameType*>(data + m(Members::frameType)); }
+  void FrameType(hkaAnimatedReferenceFrameType value) { if (m(Members::frameType) >= 0) *reinterpret_cast<hkaAnimatedReferenceFrameType*>(data + m(Members::frameType)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

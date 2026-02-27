@@ -18,30 +18,30 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<char> NamePtr() {
-    int16 off = m(name); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::name); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Name() {
-    int16 off = m(name); if (off == -1) return nullptr;
+    int16 off = m(Members::name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Name() const {
-    int16 off = m(name); if (off == -1) return nullptr;
+    int16 off = m(Members::name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   Pointer<char> ValuePtr() {
-    int16 off = m(value); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::value); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Value() {
-    int16 off = m(value); if (off == -1) return nullptr;
+    int16 off = m(Members::value); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Value() const {
-    int16 off = m(value); if (off == -1) return nullptr;
+    int16 off = m(Members::value); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
@@ -76,25 +76,25 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<hkxEnvironmentVariable::Interface> VariablesPtr() {
-    int16 off = m(variables); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::variables); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<hkxEnvironmentVariable::Interface> Variables() {
-    int16 off = m(variables); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::variables); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<hkxEnvironmentVariable::Interface> Variables() const {
-    int16 off = m(variables); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::variables); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumVariables() const { return m(numVariables) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numVariables)); }
+  uint32 NumVariables() const { return m(Members::numVariables) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numVariables)); }
   hkReferenceObject::Interface BasehkReferenceObject() const {
-    int16 off = m(basehkReferenceObject); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::basehkReferenceObject); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
-  void NumVariables(uint32 value) { if (m(numVariables) >= 0) *reinterpret_cast<uint32*>(data + m(numVariables)) = value; }
+  void NumVariables(uint32 value) { if (m(Members::numVariables) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numVariables)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

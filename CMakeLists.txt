@@ -6,6 +6,20 @@ endif()
 
 project(HavokLib VERSION 1)
 
+if(NOT CMAKE_CONFIGURATION_TYPES)
+  if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type." FORCE)
+  endif()
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
+if(MSVC)
+  foreach(lang C CXX)
+    string(REPLACE "/Zi" "" relwithdebinfo_no_debug "${CMAKE_${lang}_FLAGS_RELWITHDEBINFO}")
+    set(CMAKE_${lang}_FLAGS_RELWITHDEBINFO "${relwithdebinfo_no_debug}" CACHE STRING "Flags used by the ${lang} compiler during RELWITHDEBINFO builds." FORCE)
+  endforeach()
+endif()
+
 find_package(Python3 COMPONENTS Development Interpreter)
 
 # ~~~
@@ -15,7 +29,7 @@ find_package(Python3 COMPONENTS Development Interpreter)
 # ~~~
 
 option(PYTHON_MODULE "Build a module for Python 3 (enables OBJECTS_PID)." ON)
-option(TOOLSET "Build toolset." ON)
+set(TOOLSET OFF CACHE BOOL "Build toolset." FORCE)
 option(ODR_TEST "Enable ODR testing." OFF)
 
 if(NOT Python3_FOUND AND PYTHON_MODULE)
@@ -28,11 +42,22 @@ option(NO_OBJECTS "" OFF)
 option(CLI "" ${TOOLSET})
 option(GLTF "" ${TOOLSET})
 
-set(CMAKE_CXX_STANDARD 20)
-add_compile_options(-Wall -Wextra)
+if(NOT TOOLSET)
+  set(CLI OFF CACHE BOOL "" FORCE)
+  set(GLTF OFF CACHE BOOL "" FORCE)
+endif()
 
-if(TOOLSET)
+set(CMAKE_CXX_STANDARD 20)
+if(MSVC)
+  add_compile_options(/W4)
+else()
+  add_compile_options(-Wall -Wextra)
+endif()
+
+if(TOOLSET AND BUILD_SHARED_LIBS)
   set(EXPOSE_SYMBOLS spike;gltf;havok;pugixml)
+else()
+  unset(EXPOSE_SYMBOLS)
 endif()
 
 set(TPD_PATH ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party)

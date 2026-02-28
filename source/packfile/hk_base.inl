@@ -18,30 +18,30 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<char> ObjectPtr() {
-    int16 off = m(Members::object); if (off == -1) return {nullptr, lookup};
+    int16 off = m(object); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Object() {
-    int16 off = m(Members::object); if (off == -1) return nullptr;
+    int16 off = m(object); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Object() const {
-    int16 off = m(Members::object); if (off == -1) return nullptr;
+    int16 off = m(object); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   Pointer<char> ClassDescPtr() {
-    int16 off = m(Members::classDesc); if (off == -1) return {nullptr, lookup};
+    int16 off = m(classDesc); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *ClassDesc() {
-    int16 off = m(Members::classDesc); if (off == -1) return nullptr;
+    int16 off = m(classDesc); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *ClassDesc() const {
-    int16 off = m(Members::classDesc); if (off == -1) return nullptr;
+    int16 off = m(classDesc); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
@@ -75,37 +75,37 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<int32> VtablePtr() {
-    int16 off = m(Members::vtable); if (off == -1) return {nullptr, lookup};
+    int16 off = m(vtable); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   int32 *Vtable() {
-    int16 off = m(Members::vtable); if (off == -1) return nullptr;
+    int16 off = m(vtable); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<int32**>(data + off);
     return *reinterpret_cast<es::PointerX86<int32>*>(data + off);
   }
   const int32 *Vtable() const {
-    int16 off = m(Members::vtable); if (off == -1) return nullptr;
+    int16 off = m(vtable); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<int32**>(data + off);
     return *reinterpret_cast<es::PointerX86<int32>*>(data + off);
   }
-  int16 MemSizeAndFlags() const { return m(Members::memSizeAndFlags) == -1 ? int16{} : *reinterpret_cast<int16*>(data + m(Members::memSizeAndFlags)); }
-  int16 ReferenceCount() const { return m(Members::referenceCount) == -1 ? int16{} : *reinterpret_cast<int16*>(data + m(Members::referenceCount)); }
+  int16 MemSizeAndFlags() const { return m(memSizeAndFlags) == -1 ? int16{} : *reinterpret_cast<int16*>(data + m(memSizeAndFlags)); }
+  int16 ReferenceCount() const { return m(referenceCount) == -1 ? int16{} : *reinterpret_cast<int16*>(data + m(referenceCount)); }
   Pointer<int32> UnkPtr() {
-    int16 off = m(Members::unk); if (off == -1) return {nullptr, lookup};
+    int16 off = m(unk); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   int32 *Unk() {
-    int16 off = m(Members::unk); if (off == -1) return nullptr;
+    int16 off = m(unk); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<int32**>(data + off);
     return *reinterpret_cast<es::PointerX86<int32>*>(data + off);
   }
   const int32 *Unk() const {
-    int16 off = m(Members::unk); if (off == -1) return nullptr;
+    int16 off = m(unk); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<int32**>(data + off);
     return *reinterpret_cast<es::PointerX86<int32>*>(data + off);
   }
-  void MemSizeAndFlags(int16 value) { if (m(Members::memSizeAndFlags) >= 0) *reinterpret_cast<int16*>(data + m(Members::memSizeAndFlags)) = value; }
-  void ReferenceCount(int16 value) { if (m(Members::referenceCount) >= 0) *reinterpret_cast<int16*>(data + m(Members::referenceCount)) = value; }
+  void MemSizeAndFlags(int16 value) { if (m(memSizeAndFlags) >= 0) *reinterpret_cast<int16*>(data + m(memSizeAndFlags)) = value; }
+  void ReferenceCount(int16 value) { if (m(referenceCount) >= 0) *reinterpret_cast<int16*>(data + m(referenceCount)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

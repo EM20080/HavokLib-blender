@@ -18,22 +18,22 @@ struct Interface {
   Interface &operator=(const Interface&) = default;
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
-  float Time() const { return m(Members::time) == -1 ? float{} : *reinterpret_cast<float*>(data + m(Members::time)); }
+  float Time() const { return m(time) == -1 ? float{} : *reinterpret_cast<float*>(data + m(time)); }
   Pointer<char> TextPtr() {
-    int16 off = m(Members::text); if (off == -1) return {nullptr, lookup};
+    int16 off = m(text); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Text() {
-    int16 off = m(Members::text); if (off == -1) return nullptr;
+    int16 off = m(text); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Text() const {
-    int16 off = m(Members::text); if (off == -1) return nullptr;
+    int16 off = m(text); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
-  void Time(float value) { if (m(Members::time) >= 0) *reinterpret_cast<float*>(data + m(Members::time)) = value; }
+  void Time(float value) { if (m(time) >= 0) *reinterpret_cast<float*>(data + m(time)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }
@@ -62,35 +62,35 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<char> NamePtr() {
-    int16 off = m(Members::name); if (off == -1) return {nullptr, lookup};
+    int16 off = m(name); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Name() {
-    int16 off = m(Members::name); if (off == -1) return nullptr;
+    int16 off = m(name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Name() const {
-    int16 off = m(Members::name); if (off == -1) return nullptr;
+    int16 off = m(name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   Pointer<hkaAnnotation::Interface> AnnotationsPtr() {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<hkaAnnotation::Interface> Annotations() {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<hkaAnnotation::Interface> Annotations() const {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumAnnotations() const { return m(Members::numAnnotations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numAnnotations)); }
-  void NumAnnotations(uint32 value) { if (m(Members::numAnnotations) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numAnnotations)) = value; }
+  uint32 NumAnnotations() const { return m(numAnnotations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numAnnotations)); }
+  void NumAnnotations(uint32 value) { if (m(numAnnotations) >= 0) *reinterpret_cast<uint32*>(data + m(numAnnotations)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }
@@ -135,61 +135,61 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   hkReferenceObject::Interface BasehkReferenceObject() const {
-    int16 off = m(Members::basehkReferenceObject); if (off == -1) return {nullptr, lookup};
+    int16 off = m(basehkReferenceObject); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
-  uint32 AnimationType() const { return m(Members::animationType) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::animationType)); }
-  float Duration() const { return m(Members::duration) == -1 ? float{} : *reinterpret_cast<float*>(data + m(Members::duration)); }
-  uint32 NumOfTransformTracks() const { return m(Members::numOfTransformTracks) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numOfTransformTracks)); }
+  uint32 AnimationType() const { return m(animationType) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(animationType)); }
+  float Duration() const { return m(duration) == -1 ? float{} : *reinterpret_cast<float*>(data + m(duration)); }
+  uint32 NumOfTransformTracks() const { return m(numOfTransformTracks) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numOfTransformTracks)); }
   Pointer<hkaAnimatedReferenceFrame::Interface> ExtractedMotionPtr() {
-    int16 off = m(Members::extractedMotion); if (off == -1) return {nullptr, lookup};
+    int16 off = m(extractedMotion); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<hkaAnimatedReferenceFrame::Interface> ExtractedMotion() {
-    int16 off = m(Members::extractedMotion); if (off == -1) return {nullptr, lookup};
+    int16 off = m(extractedMotion); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<hkaAnimatedReferenceFrame::Interface> ExtractedMotion() const {
-    int16 off = m(Members::extractedMotion); if (off == -1) return {nullptr, lookup};
+    int16 off = m(extractedMotion); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Pointer<Pointer<hkaAnnotationTrack::Interface>> AnnotationsPtr() {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<Pointer<hkaAnnotationTrack::Interface>> Annotations() {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<Pointer<hkaAnnotationTrack::Interface>> Annotations() const {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumAnnotations() const { return m(Members::numAnnotations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numAnnotations)); }
+  uint32 NumAnnotations() const { return m(numAnnotations) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numAnnotations)); }
   Pointer<hkaAnnotationTrack::Interface> AnnotationsPtrHK700() {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<hkaAnnotationTrack::Interface> AnnotationsHK700() {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<hkaAnnotationTrack::Interface> AnnotationsHK700() const {
-    int16 off = m(Members::annotations); if (off == -1) return {nullptr, lookup};
+    int16 off = m(annotations); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumOfFloatTracks() const { return m(Members::numOfFloatTracks) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numOfFloatTracks)); }
-  void AnimationType(uint32 value) { if (m(Members::animationType) >= 0) *reinterpret_cast<uint32*>(data + m(Members::animationType)) = value; }
-  void Duration(float value) { if (m(Members::duration) >= 0) *reinterpret_cast<float*>(data + m(Members::duration)) = value; }
-  void NumOfTransformTracks(uint32 value) { if (m(Members::numOfTransformTracks) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numOfTransformTracks)) = value; }
-  void NumAnnotations(uint32 value) { if (m(Members::numAnnotations) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numAnnotations)) = value; }
-  void NumOfFloatTracks(uint32 value) { if (m(Members::numOfFloatTracks) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numOfFloatTracks)) = value; }
+  uint32 NumOfFloatTracks() const { return m(numOfFloatTracks) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numOfFloatTracks)); }
+  void AnimationType(uint32 value) { if (m(animationType) >= 0) *reinterpret_cast<uint32*>(data + m(animationType)) = value; }
+  void Duration(float value) { if (m(duration) >= 0) *reinterpret_cast<float*>(data + m(duration)) = value; }
+  void NumOfTransformTracks(uint32 value) { if (m(numOfTransformTracks) >= 0) *reinterpret_cast<uint32*>(data + m(numOfTransformTracks)) = value; }
+  void NumAnnotations(uint32 value) { if (m(numAnnotations) >= 0) *reinterpret_cast<uint32*>(data + m(numAnnotations)) = value; }
+  void NumOfFloatTracks(uint32 value) { if (m(numOfFloatTracks) >= 0) *reinterpret_cast<uint32*>(data + m(numOfFloatTracks)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

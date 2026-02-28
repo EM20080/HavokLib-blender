@@ -18,21 +18,21 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<char> NamePtr() {
-    int16 off = m(Members::name); if (off == -1) return {nullptr, lookup};
+    int16 off = m(name); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Name() {
-    int16 off = m(Members::name); if (off == -1) return nullptr;
+    int16 off = m(name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Name() const {
-    int16 off = m(Members::name); if (off == -1) return nullptr;
+    int16 off = m(name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
-  int32 LockTranslation() const { return m(Members::lockTranslation) == -1 ? int32{} : *reinterpret_cast<int32*>(data + m(Members::lockTranslation)); }
-  void LockTranslation(int32 value) { if (m(Members::lockTranslation) >= 0) *reinterpret_cast<int32*>(data + m(Members::lockTranslation)) = value; }
+  int32 LockTranslation() const { return m(lockTranslation) == -1 ? int32{} : *reinterpret_cast<int32*>(data + m(lockTranslation)); }
+  void LockTranslation(int32 value) { if (m(lockTranslation) >= 0) *reinterpret_cast<int32*>(data + m(lockTranslation)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }
@@ -61,23 +61,23 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<hkLocalFrame> LocalFramePtr() {
-    int16 off = m(Members::localFrame); if (off == -1) return {nullptr, lookup};
+    int16 off = m(localFrame); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   hkLocalFrame *LocalFrame() {
-    int16 off = m(Members::localFrame); if (off == -1) return nullptr;
+    int16 off = m(localFrame); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<hkLocalFrame**>(data + off);
     return *reinterpret_cast<es::PointerX86<hkLocalFrame>*>(data + off);
   }
   const hkLocalFrame *LocalFrame() const {
-    int16 off = m(Members::localFrame); if (off == -1) return nullptr;
+    int16 off = m(localFrame); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<hkLocalFrame**>(data + off);
     return *reinterpret_cast<es::PointerX86<hkLocalFrame>*>(data + off);
   }
-  int32 BoneIndex() const { return m(Members::boneIndex) == -1 ? int32{} : *reinterpret_cast<int32*>(data + m(Members::boneIndex)); }
-  int16 BoneIndexHK2011_1() const { return m(Members::boneIndex) == -1 ? int16{} : *reinterpret_cast<int16*>(data + m(Members::boneIndex)); }
-  void BoneIndex(int32 value) { if (m(Members::boneIndex) >= 0) *reinterpret_cast<int32*>(data + m(Members::boneIndex)) = value; }
-  void BoneIndexHK2011_1(int16 value) { if (m(Members::boneIndex) >= 0) *reinterpret_cast<int16*>(data + m(Members::boneIndex)) = value; }
+  int32 BoneIndex() const { return m(boneIndex) == -1 ? int32{} : *reinterpret_cast<int32*>(data + m(boneIndex)); }
+  int16 BoneIndexHK2011_1() const { return m(boneIndex) == -1 ? int16{} : *reinterpret_cast<int16*>(data + m(boneIndex)); }
+  void BoneIndex(int32 value) { if (m(boneIndex) >= 0) *reinterpret_cast<int32*>(data + m(boneIndex)) = value; }
+  void BoneIndexHK2011_1(int16 value) { if (m(boneIndex) >= 0) *reinterpret_cast<int16*>(data + m(boneIndex)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }
@@ -105,23 +105,23 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<char> NamePtr() {
-    int16 off = m(Members::name); if (off == -1) return {nullptr, lookup};
+    int16 off = m(name); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Name() {
-    int16 off = m(Members::name); if (off == -1) return nullptr;
+    int16 off = m(name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Name() const {
-    int16 off = m(Members::name); if (off == -1) return nullptr;
+    int16 off = m(name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
-  int16 StartBoneIndex() const { return m(Members::startBoneIndex) == -1 ? int16{} : *reinterpret_cast<int16*>(data + m(Members::startBoneIndex)); }
-  uint16 NumBones() const { return m(Members::numBones) == -1 ? uint16{} : *reinterpret_cast<uint16*>(data + m(Members::numBones)); }
-  void StartBoneIndex(int16 value) { if (m(Members::startBoneIndex) >= 0) *reinterpret_cast<int16*>(data + m(Members::startBoneIndex)) = value; }
-  void NumBones(uint16 value) { if (m(Members::numBones) >= 0) *reinterpret_cast<uint16*>(data + m(Members::numBones)) = value; }
+  int16 StartBoneIndex() const { return m(startBoneIndex) == -1 ? int16{} : *reinterpret_cast<int16*>(data + m(startBoneIndex)); }
+  uint16 NumBones() const { return m(numBones) == -1 ? uint16{} : *reinterpret_cast<uint16*>(data + m(numBones)); }
+  void StartBoneIndex(int16 value) { if (m(startBoneIndex) >= 0) *reinterpret_cast<int16*>(data + m(startBoneIndex)) = value; }
+  void NumBones(uint16 value) { if (m(numBones) >= 0) *reinterpret_cast<uint16*>(data + m(numBones)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }
@@ -174,149 +174,149 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   Pointer<char> NamePtr() {
-    int16 off = m(Members::name); if (off == -1) return {nullptr, lookup};
+    int16 off = m(name); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Name() {
-    int16 off = m(Members::name); if (off == -1) return nullptr;
+    int16 off = m(name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Name() const {
-    int16 off = m(Members::name); if (off == -1) return nullptr;
+    int16 off = m(name); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   Pointer<int16> ParentIndicesPtr() {
-    int16 off = m(Members::parentIndices); if (off == -1) return {nullptr, lookup};
+    int16 off = m(parentIndices); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   int16 *ParentIndices() {
-    int16 off = m(Members::parentIndices); if (off == -1) return nullptr;
+    int16 off = m(parentIndices); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<int16**>(data + off);
     return *reinterpret_cast<es::PointerX86<int16>*>(data + off);
   }
   const int16 *ParentIndices() const {
-    int16 off = m(Members::parentIndices); if (off == -1) return nullptr;
+    int16 off = m(parentIndices); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<int16**>(data + off);
     return *reinterpret_cast<es::PointerX86<int16>*>(data + off);
   }
-  uint32 NumParentIndices() const { return m(Members::numParentIndices) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numParentIndices)); }
+  uint32 NumParentIndices() const { return m(numParentIndices) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numParentIndices)); }
   Pointer<Pointer<hkaBone::Interface>> BonesPtr() {
-    int16 off = m(Members::bones); if (off == -1) return {nullptr, lookup};
+    int16 off = m(bones); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<Pointer<hkaBone::Interface>> Bones() {
-    int16 off = m(Members::bones); if (off == -1) return {nullptr, lookup};
+    int16 off = m(bones); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<Pointer<hkaBone::Interface>> Bones() const {
-    int16 off = m(Members::bones); if (off == -1) return {nullptr, lookup};
+    int16 off = m(bones); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumBones() const { return m(Members::numBones) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numBones)); }
+  uint32 NumBones() const { return m(numBones) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numBones)); }
   Pointer<hkaBone::Interface> BonesPtrHK700() {
-    int16 off = m(Members::bones); if (off == -1) return {nullptr, lookup};
+    int16 off = m(bones); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<hkaBone::Interface> BonesHK700() {
-    int16 off = m(Members::bones); if (off == -1) return {nullptr, lookup};
+    int16 off = m(bones); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<hkaBone::Interface> BonesHK700() const {
-    int16 off = m(Members::bones); if (off == -1) return {nullptr, lookup};
+    int16 off = m(bones); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Pointer<hkQTransform> TransformsPtr() {
-    int16 off = m(Members::transforms); if (off == -1) return {nullptr, lookup};
+    int16 off = m(transforms); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   hkQTransform *Transforms() {
-    int16 off = m(Members::transforms); if (off == -1) return nullptr;
+    int16 off = m(transforms); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<hkQTransform**>(data + off);
     return *reinterpret_cast<es::PointerX86<hkQTransform>*>(data + off);
   }
   const hkQTransform *Transforms() const {
-    int16 off = m(Members::transforms); if (off == -1) return nullptr;
+    int16 off = m(transforms); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<hkQTransform**>(data + off);
     return *reinterpret_cast<es::PointerX86<hkQTransform>*>(data + off);
   }
-  uint32 NumTransforms() const { return m(Members::numTransforms) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numTransforms)); }
+  uint32 NumTransforms() const { return m(numTransforms) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numTransforms)); }
   Pointer<Pointer<char>> FloatSlotsPtr() {
-    int16 off = m(Members::floatSlots); if (off == -1) return {nullptr, lookup};
+    int16 off = m(floatSlots); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<Pointer<char>> FloatSlots() {
-    int16 off = m(Members::floatSlots); if (off == -1) return {nullptr, lookup};
+    int16 off = m(floatSlots); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<Pointer<char>> FloatSlots() const {
-    int16 off = m(Members::floatSlots); if (off == -1) return {nullptr, lookup};
+    int16 off = m(floatSlots); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumFloatSlots() const { return m(Members::numFloatSlots) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numFloatSlots)); }
+  uint32 NumFloatSlots() const { return m(numFloatSlots) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numFloatSlots)); }
   Pointer<hkLocalFrameOnBone::Interface> LocalFramesPtr() {
-    int16 off = m(Members::localFrames); if (off == -1) return {nullptr, lookup};
+    int16 off = m(localFrames); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<hkLocalFrameOnBone::Interface> LocalFrames() {
-    int16 off = m(Members::localFrames); if (off == -1) return {nullptr, lookup};
+    int16 off = m(localFrames); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<hkLocalFrameOnBone::Interface> LocalFrames() const {
-    int16 off = m(Members::localFrames); if (off == -1) return {nullptr, lookup};
+    int16 off = m(localFrames); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumLocalFrames() const { return m(Members::numLocalFrames) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numLocalFrames)); }
+  uint32 NumLocalFrames() const { return m(numLocalFrames) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numLocalFrames)); }
   hkReferenceObject::Interface BasehkReferenceObject() const {
-    int16 off = m(Members::basehkReferenceObject); if (off == -1) return {nullptr, lookup};
+    int16 off = m(basehkReferenceObject); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Pointer<float> ReferenceFloatsPtr() {
-    int16 off = m(Members::referenceFloats); if (off == -1) return {nullptr, lookup};
+    int16 off = m(referenceFloats); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   float *ReferenceFloats() {
-    int16 off = m(Members::referenceFloats); if (off == -1) return nullptr;
+    int16 off = m(referenceFloats); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
   const float *ReferenceFloats() const {
-    int16 off = m(Members::referenceFloats); if (off == -1) return nullptr;
+    int16 off = m(referenceFloats); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
-  uint32 NumReferenceFloats() const { return m(Members::numReferenceFloats) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numReferenceFloats)); }
+  uint32 NumReferenceFloats() const { return m(numReferenceFloats) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numReferenceFloats)); }
   Pointer<hkaPartition::Interface> PartitionsPtr() {
-    int16 off = m(Members::partitions); if (off == -1) return {nullptr, lookup};
+    int16 off = m(partitions); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Iterator<hkaPartition::Interface> Partitions() {
-    int16 off = m(Members::partitions); if (off == -1) return {nullptr, lookup};
+    int16 off = m(partitions); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
   Iterator<hkaPartition::Interface> Partitions() const {
-    int16 off = m(Members::partitions); if (off == -1) return {nullptr, lookup};
+    int16 off = m(partitions); if (off == -1) return {nullptr, lookup};
     if (layout->ptrSize == 8) return {*reinterpret_cast<char**>(data + off), lookup};
     return {*reinterpret_cast<es::PointerX86<char>*>(data + off), lookup};
   }
-  uint32 NumPartitions() const { return m(Members::numPartitions) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numPartitions)); }
-  void NumParentIndices(uint32 value) { if (m(Members::numParentIndices) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numParentIndices)) = value; }
-  void NumBones(uint32 value) { if (m(Members::numBones) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numBones)) = value; }
-  void NumTransforms(uint32 value) { if (m(Members::numTransforms) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numTransforms)) = value; }
-  void NumFloatSlots(uint32 value) { if (m(Members::numFloatSlots) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numFloatSlots)) = value; }
-  void NumLocalFrames(uint32 value) { if (m(Members::numLocalFrames) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numLocalFrames)) = value; }
-  void NumReferenceFloats(uint32 value) { if (m(Members::numReferenceFloats) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numReferenceFloats)) = value; }
-  void NumPartitions(uint32 value) { if (m(Members::numPartitions) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numPartitions)) = value; }
+  uint32 NumPartitions() const { return m(numPartitions) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numPartitions)); }
+  void NumParentIndices(uint32 value) { if (m(numParentIndices) >= 0) *reinterpret_cast<uint32*>(data + m(numParentIndices)) = value; }
+  void NumBones(uint32 value) { if (m(numBones) >= 0) *reinterpret_cast<uint32*>(data + m(numBones)) = value; }
+  void NumTransforms(uint32 value) { if (m(numTransforms) >= 0) *reinterpret_cast<uint32*>(data + m(numTransforms)) = value; }
+  void NumFloatSlots(uint32 value) { if (m(numFloatSlots) >= 0) *reinterpret_cast<uint32*>(data + m(numFloatSlots)) = value; }
+  void NumLocalFrames(uint32 value) { if (m(numLocalFrames) >= 0) *reinterpret_cast<uint32*>(data + m(numLocalFrames)) = value; }
+  void NumReferenceFloats(uint32 value) { if (m(numReferenceFloats) >= 0) *reinterpret_cast<uint32*>(data + m(numReferenceFloats)) = value; }
+  void NumPartitions(uint32 value) { if (m(numPartitions) >= 0) *reinterpret_cast<uint32*>(data + m(numPartitions)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

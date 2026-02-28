@@ -17,13 +17,73 @@
 
 #include "internal/hkp_collision.hpp"
 #include "../format_old.hpp"
+#include "../format_new.hpp"
 #include "hklib/hk_packfile.hpp"
 #include "spike/type/pointer.hpp"
 #include <cstring>
+#include <limits>
 #include <type_traits>
 #include <vector>
 
 namespace {
+bool MultiplySize(size_t left, size_t right, size_t &out) {
+  if (left == 0 || right == 0) {
+    out = 0;
+    return true;
+  }
+
+  if (left > (std::numeric_limits<size_t>::max)() / right) {
+    return false;
+  }
+
+  out = left * right;
+  return true;
+}
+
+bool IsPointerInRange(const void *ptr, size_t size, const char *base,
+                      size_t length) {
+  if (!ptr) {
+    return false;
+  }
+  if (size > length) {
+    return false;
+  }
+
+  const char *p = static_cast<const char *>(ptr);
+  if (p < base) {
+    return false;
+  }
+
+  const size_t offset = static_cast<size_t>(p - base);
+  return offset <= length - size;
+}
+
+bool IsPointerInHeader(const IhkPackFile *header, const void *ptr,
+                       size_t size) {
+  if (!header || !ptr) {
+    return false;
+  }
+
+  if (const auto *oldHeader = dynamic_cast<const hkxHeader *>(header)) {
+    for (const auto &section : oldHeader->sections) {
+      const char *base = section.buffer.data();
+      const size_t length = section.buffer.size();
+      if (IsPointerInRange(ptr, size, base, length)) {
+        return true;
+      }
+    }
+  }
+
+  if (const auto *newHeader = dynamic_cast<const hkxNewHeader *>(header)) {
+    const char *base = newHeader->dataBuffer.data();
+    const size_t length = newHeader->dataBuffer.size();
+    if (IsPointerInRange(ptr, size, base, length)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 uint16 ByteSwap16(uint16 value) {
   return static_cast<uint16>(((value & 0x00FFu) << 8) |
                              ((value & 0xFF00u) >> 8));
@@ -112,6 +172,21 @@ struct ArrayViewWithMode {
   bool x64{};
   bool swapEndian{};
 };
+
+bool IsArrayViewInHeader(const ArrayViewWithMode &view, size_t elementSize,
+                         const IhkPackFile *header) {
+  if (view.view.count == 0) {
+    return true;
+  }
+
+  size_t totalSize = 0;
+  if (!MultiplySize(static_cast<size_t>(view.view.count), elementSize,
+                    totalSize)) {
+    return false;
+  }
+
+  return IsPointerInHeader(header, view.view.data, totalSize);
+}
 
 bool IsArrayViewValid(const ArrayView &view, uint32 countLimit) {
   if (view.count > countLimit) {
@@ -224,17 +299,28 @@ struct hkpPhysicsDataMidInterface : hkpMidBase<hkpPhysicsDataInternalInterface> 
   static constexpr uint32 kMaxSystems = 1 << 14;
 
   ArrayViewWithMode GetSystemsArray() const {
-    return ReadArrayWithFallback(data, 12, this->rule.x64, this->IsBigEndianData(),
-                                 kMaxSystems);
+    ArrayViewWithMode systems = ReadArrayWithFallback(
+        data, 12, this->rule.x64, this->IsBigEndianData(), kMaxSystems);
+    const size_t pointerSize = systems.x64 ? 8u : 4u;
+    if (!IsArrayViewInHeader(systems, pointerSize, this->header)) {
+      return {};
+    }
+    return systems;
   }
 
   size_t GetNumSystems() const override {
+    if (!IsPointerInHeader(this->header, data, 16)) {
+      return 0;
+    }
     return GetSystemsArray().view.count;
   }
 
   const hkpPhysicsSystem *GetSystem(size_t id) const override {
     const ArrayViewWithMode systems = GetSystemsArray();
     const void *item = ReadPointerArrayItem(systems.view, id, systems.x64);
+    if (!IsPointerInHeader(this->header, item, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpPhysicsSystem>(this->header->GetClass(item));
   }
 };
@@ -247,13 +333,18 @@ struct hkpPhysicsSystemMidInterface
   static constexpr uint32 kMaxRigidBodies = 1 << 16;
 
   ArrayViewWithMode GetRigidBodiesArray() const {
-    return ReadArrayWithFallback(data, 8, this->rule.x64, this->IsBigEndianData(),
-                                 kMaxRigidBodies);
+    ArrayViewWithMode bodies = ReadArrayWithFallback(
+        data, 8, this->rule.x64, this->IsBigEndianData(), kMaxRigidBodies);
+    const size_t pointerSize = bodies.x64 ? 8u : 4u;
+    if (!IsArrayViewInHeader(bodies, pointerSize, this->header)) {
+      return {};
+    }
+    return bodies;
   }
 
   std::string_view GetName() const override {
     const char *name = ReadPointer<char>(data, 56, this->rule.x64);
-    if (!name) {
+    if (!IsPointerInHeader(this->header, name, 1)) {
       return {};
     }
 
@@ -263,12 +354,18 @@ struct hkpPhysicsSystemMidInterface
   bool IsActive() const override { return ReadValue<bool>(data, 64); }
 
   size_t GetNumRigidBodies() const override {
+    if (!IsPointerInHeader(this->header, data, 16)) {
+      return 0;
+    }
     return GetRigidBodiesArray().view.count;
   }
 
   const hkpRigidBody *GetRigidBody(size_t id) const override {
     const ArrayViewWithMode rigidBodies = GetRigidBodiesArray();
     const void *item = ReadPointerArrayItem(rigidBodies.view, id, rigidBodies.x64);
+    if (!IsPointerInHeader(this->header, item, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpRigidBody>(this->header->GetClass(item));
   }
 };
@@ -280,7 +377,7 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   std::string_view GetName() const override {
     const char *name =
         ReadPointer<char>(data, RigidBodyNameOffset(this->rule.version), this->rule.x64);
-    if (!name) {
+    if (!IsPointerInHeader(this->header, name, 1)) {
       return {};
     }
 
@@ -294,6 +391,9 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
 
   const hkpShape *GetShape() const override {
     const void *shapePtr = ReadPointer<char>(data, 16, this->rule.x64);
+    if (!IsPointerInHeader(this->header, shapePtr, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpShape>(this->header->GetClass(shapePtr));
   }
 };
@@ -351,12 +451,18 @@ struct hkpMoppBvTreeShapeMidInterface
   const hkpMoppCode *GetCode() const override {
     const void *codePtr = ReadPointer<char>(
         data, MoppCodePointerOffset(this->rule.version), this->rule.x64);
+    if (!IsPointerInHeader(this->header, codePtr, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpMoppCode>(this->header->GetClass(codePtr));
   }
 
   const hkpShape *GetChildShape() const override {
     const size_t childPointerOffset = 48 + (this->rule.x64 ? 8 : 4);
     const void *shapePtr = ReadPointer<char>(data, childPointerOffset, this->rule.x64);
+    if (!IsPointerInHeader(this->header, shapePtr, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpShape>(this->header->GetClass(shapePtr));
   }
 };
@@ -369,15 +475,25 @@ struct hkpStorageExtendedMeshShapeMidInterface
   static constexpr uint32 kMaxSubparts = 1 << 16;
 
   ArrayViewWithMode GetMeshStorage() const {
-    return ReadArrayWithFallback(
+    ArrayViewWithMode mesh = ReadArrayWithFallback(
         data, StorageMeshArrayOffset(this->rule.version), this->rule.x64,
         this->IsBigEndianData(), kMaxSubparts);
+    const size_t pointerSize = mesh.x64 ? 8u : 4u;
+    if (!IsArrayViewInHeader(mesh, pointerSize, this->header)) {
+      return {};
+    }
+    return mesh;
   }
 
   ArrayViewWithMode GetShapeStorage() const {
-    return ReadArrayWithFallback(
+    ArrayViewWithMode shapes = ReadArrayWithFallback(
         data, StorageShapeArrayOffset(this->rule.version), this->rule.x64,
         this->IsBigEndianData(), kMaxSubparts);
+    const size_t pointerSize = shapes.x64 ? 8u : 4u;
+    if (!IsArrayViewInHeader(shapes, pointerSize, this->header)) {
+      return {};
+    }
+    return shapes;
   }
 
   uint32 GetShapeType() const override {
@@ -392,6 +508,9 @@ struct hkpStorageExtendedMeshShapeMidInterface
   GetMeshSubpart(size_t id) const override {
     const ArrayViewWithMode array = GetMeshStorage();
     const void *item = ReadPointerArrayItem(array.view, id, array.x64);
+    if (!IsPointerInHeader(this->header, item, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpStorageExtendedMeshShapeMeshSubpartStorage>(
         this->header->GetClass(item));
   }
@@ -404,6 +523,9 @@ struct hkpStorageExtendedMeshShapeMidInterface
   GetShapeSubpart(size_t id) const override {
     const ArrayViewWithMode array = GetShapeStorage();
     const void *item = ReadPointerArrayItem(array.view, id, array.x64);
+    if (!IsPointerInHeader(this->header, item, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpStorageExtendedMeshShapeShapeSubpartStorage>(
         this->header->GetClass(item));
   }
@@ -426,8 +548,12 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
   mutable std::vector<uint32> cachedIndices32;
 
   ArrayViewWithMode GetVerticesArray() const {
-    return ReadArrayWithFallback(data, 8, this->rule.x64, this->IsBigEndianData(),
-                                 kMaxVertices);
+    ArrayViewWithMode vertices = ReadArrayWithFallback(
+        data, 8, this->rule.x64, this->IsBigEndianData(), kMaxVertices);
+    if (!IsArrayViewInHeader(vertices, sizeof(Vector4A16), this->header)) {
+      return {};
+    }
+    return vertices;
   }
 
   ArrayViewWithMode GetIndices8Array() const {
@@ -436,18 +562,32 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
       return {};
     }
 
-    return ReadArrayWithFallback(data, offset, this->rule.x64, this->IsBigEndianData(),
-                                 kMaxIndices);
+    ArrayViewWithMode indices = ReadArrayWithFallback(
+        data, offset, this->rule.x64, this->IsBigEndianData(), kMaxIndices);
+    if (!IsArrayViewInHeader(indices, sizeof(uint8), this->header)) {
+      return {};
+    }
+    return indices;
   }
 
   ArrayViewWithMode GetIndices16Array() const {
-    return ReadArrayWithFallback(data, MeshSubpartIndices16Offset(this->rule.version),
-                                 this->rule.x64, this->IsBigEndianData(), kMaxIndices);
+    ArrayViewWithMode indices = ReadArrayWithFallback(
+        data, MeshSubpartIndices16Offset(this->rule.version), this->rule.x64,
+        this->IsBigEndianData(), kMaxIndices);
+    if (!IsArrayViewInHeader(indices, sizeof(uint16), this->header)) {
+      return {};
+    }
+    return indices;
   }
 
   ArrayViewWithMode GetIndices32Array() const {
-    return ReadArrayWithFallback(data, MeshSubpartIndices32Offset(this->rule.version),
-                                 this->rule.x64, this->IsBigEndianData(), kMaxIndices);
+    ArrayViewWithMode indices = ReadArrayWithFallback(
+        data, MeshSubpartIndices32Offset(this->rule.version), this->rule.x64,
+        this->IsBigEndianData(), kMaxIndices);
+    if (!IsArrayViewInHeader(indices, sizeof(uint32), this->header)) {
+      return {};
+    }
+    return indices;
   }
 
   size_t GetNumVertices() const override {
@@ -556,8 +696,13 @@ struct hkpStorageExtendedMeshShapeShapeSubpartStorageMidInterface
       return {};
     }
 
-    return ReadArrayWithFallback(data, offset, this->rule.x64, this->IsBigEndianData(),
-                                 kMaxShapes);
+    ArrayViewWithMode shapes = ReadArrayWithFallback(
+        data, offset, this->rule.x64, this->IsBigEndianData(), kMaxShapes);
+    const size_t pointerSize = shapes.x64 ? 8u : 4u;
+    if (!IsArrayViewInHeader(shapes, pointerSize, this->header)) {
+      return {};
+    }
+    return shapes;
   }
 
   size_t GetNumShapes() const override {
@@ -577,6 +722,9 @@ struct hkpStorageExtendedMeshShapeShapeSubpartStorageMidInterface
 
     const ArrayViewWithMode shapes = GetShapesArray();
     const void *item = ReadPointerArrayItem(shapes.view, id, shapes.x64);
+    if (!IsPointerInHeader(this->header, item, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpShape>(this->header->GetClass(item));
   }
 };
@@ -588,8 +736,13 @@ struct hkpListShapeMidInterface : hkpMidBase<hkpListShapeInternalInterface> {
   static constexpr uint32 kMaxChildren = 1 << 16;
 
   ArrayViewWithMode GetChildrenArray() const {
-    return ReadArrayWithFallback(data, 24, this->rule.x64, this->IsBigEndianData(),
-                                 kMaxChildren);
+    ArrayViewWithMode children = ReadArrayWithFallback(
+        data, 24, this->rule.x64, this->IsBigEndianData(), kMaxChildren);
+    const size_t entrySize = children.x64 ? 24u : 16u;
+    if (!IsArrayViewInHeader(children, entrySize, this->header)) {
+      return {};
+    }
+    return children;
   }
 
   uint32 GetShapeType() const override {
@@ -609,6 +762,9 @@ struct hkpListShapeMidInterface : hkpMidBase<hkpListShapeInternalInterface> {
     const size_t entrySize = children.x64 ? 24 : 16;
     const char *entryData = children.view.data + (id * entrySize);
     const void *shapePtr = ReadPointer<char>(entryData, 0, children.x64);
+    if (!IsPointerInHeader(this->header, shapePtr, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpShape>(this->header->GetClass(shapePtr));
   }
 };
@@ -625,6 +781,9 @@ struct hkpConvexTransformShapeMidInterface
   const hkpShape *GetChildShape() const override {
     const size_t childPointerOffset = 20 + (this->rule.x64 ? 8 : 4);
     const void *shapePtr = ReadPointer<char>(data, childPointerOffset, this->rule.x64);
+    if (!IsPointerInHeader(this->header, shapePtr, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpShape>(this->header->GetClass(shapePtr));
   }
 
@@ -645,6 +804,9 @@ struct hkpConvexTranslateShapeMidInterface
   const hkpShape *GetChildShape() const override {
     const size_t childPointerOffset = 20 + (this->rule.x64 ? 8 : 4);
     const void *shapePtr = ReadPointer<char>(data, childPointerOffset, this->rule.x64);
+    if (!IsPointerInHeader(this->header, shapePtr, 1)) {
+      return nullptr;
+    }
     return safe_deref_cast<const hkpShape>(this->header->GetClass(shapePtr));
   }
 
@@ -697,8 +859,12 @@ struct hkpConvexVerticesShapeMidInterface
   static constexpr uint32 kMaxPackedVertices = 1 << 20;
 
   ArrayViewWithMode GetPackedVertices() const {
-    return ReadArrayWithFallback(data, 64, this->rule.x64, this->IsBigEndianData(),
-                                 kMaxPackedVertices);
+    ArrayViewWithMode packed = ReadArrayWithFallback(
+        data, 64, this->rule.x64, this->IsBigEndianData(), kMaxPackedVertices);
+    if (!IsArrayViewInHeader(packed, sizeof(FourVectors), this->header)) {
+      return {};
+    }
+    return packed;
   }
 
   uint32 GetShapeType() const override {

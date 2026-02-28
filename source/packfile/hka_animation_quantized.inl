@@ -32,41 +32,41 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   hkaAnimation::Interface BasehkaAnimation() const {
-    int16 off = m(Members::basehkaAnimation); if (off == -1) return {nullptr, lookup};
+    int16 off = m(basehkaAnimation); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Pointer<char> DataPtr() {
-    int16 off = m(Members::data); if (off == -1) return {nullptr, lookup};
+    int16 off = m(data); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Data() {
-    int16 off = m(Members::data); if (off == -1) return nullptr;
+    int16 off = m(data); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Data() const {
-    int16 off = m(Members::data); if (off == -1) return nullptr;
+    int16 off = m(data); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
-  uint32 NumData() const { return m(Members::numData) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numData)); }
-  uint32 Endian() const { return m(Members::endian) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::endian)); }
+  uint32 NumData() const { return m(numData) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numData)); }
+  uint32 Endian() const { return m(endian) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(endian)); }
   Pointer<char> SkeletonPtr() {
-    int16 off = m(Members::skeleton); if (off == -1) return {nullptr, lookup};
+    int16 off = m(skeleton); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *Skeleton() {
-    int16 off = m(Members::skeleton); if (off == -1) return nullptr;
+    int16 off = m(skeleton); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *Skeleton() const {
-    int16 off = m(Members::skeleton); if (off == -1) return nullptr;
+    int16 off = m(skeleton); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
-  void NumData(uint32 value) { if (m(Members::numData) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numData)) = value; }
-  void Endian(uint32 value) { if (m(Members::endian) >= 0) *reinterpret_cast<uint32*>(data + m(Members::endian)) = value; }
+  void NumData(uint32 value) { if (m(numData) >= 0) *reinterpret_cast<uint32*>(data + m(numData)) = value; }
+  void Endian(uint32 value) { if (m(endian) >= 0) *reinterpret_cast<uint32*>(data + m(endian)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

@@ -90,6 +90,11 @@ ReadFunc Read<CompileFourCC("SDKV")> =
           return HK2018;
         case 2019:
           return HK2019;
+        // Newer tagfiles (SDKV 2020/2021/2022) are basically 2019.
+        case 2020:
+        case 2021:
+        case 2022:
+          return HK2019;
         default:
           return HKUNKVER;
         }

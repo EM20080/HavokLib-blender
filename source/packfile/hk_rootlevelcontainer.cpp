@@ -23,7 +23,7 @@ struct hkRootLevelContainerSaver {
   const hkRootLevelContainerInternalInterface *in;
   const clgen::hkRootLevelContainer::Interface *out;
 
-  void Save(BinWritterRef wr, hkFixups &fixups) {
+  void Save(BinWritterRef_e wr, hkFixups &fixups) {
     const size_t sBegin = wr.Tell();
     auto &locals = fixups.locals;
     auto &lay = *out->layout;
@@ -39,22 +39,39 @@ struct hkRootLevelContainerSaver {
       using vm = clgen::hkNamedVariant::Members;
 
       for ([[maybe_unused]] auto &v : *in) {
+        if (!v.pointer && std::string_view(v.className) != "hkxScene") continue;
         const size_t varBegin = wr.Tell();
         wr.Skip(varType->totalSize);
 
         for (auto v : varType->vtable) {
-          locals.emplace_back(varBegin + (v * varType->ptrSize));
+          locals.emplace_back(varBegin + v);
         }
       }
 
       for (auto &i : *in) {
-        wr.ApplyPadding(8);
+        if (!i.pointer && std::string_view(i.className) != "hkxScene") continue;
+        wr.ApplyPadding();
         locals[curFixup + vm::name].destination = wr.Tell();
         wr.WriteBuffer(i.name.data(), i.name.size() + 1);
-        wr.ApplyPadding(8);
+        wr.ApplyPadding();
         locals[curFixup + vm::className].destination = wr.Tell();
         wr.WriteBuffer(i.className.data(), i.className.size() + 1);
-        locals[curFixup + vm::variant].destClass = i.pointer;
+        if (i.pointer) {
+          locals[curFixup + vm::variant].destClass = i.pointer;
+        } else {
+          fixups.hkxScenePtrOff = locals[curFixup + vm::variant].strOffset;
+          fixups.hasHkxSceneVariant = true;
+          locals[curFixup + vm::variant].destination = static_cast<size_t>(-1);
+        }
+
+        if (out->LayoutVersion() < HK700) {
+          size_t classDescOff =
+              locals[curFixup + vm::variant].strOffset + varType->ptrSize;
+          fixups.classDescs.emplace_back(classDescOff,
+                                         std::string(i.className));
+        }
+
+        curFixup += vm::_count_;
       }
     }
   }
@@ -95,10 +112,15 @@ struct hkRootLevelContainerMidInterface
     saver->in = static_cast<const hkRootLevelContainerInternalInterface *>(
         checked_deref_cast<const hkRootLevelContainer>(other));
     saver->out = &interface;
-    interface.NumVariants(saver->in->Size());
+    size_t validCount = 0;
+    for (size_t i = 0; i < saver->in->Size(); i++) {
+      auto v = saver->in->At(i);
+      if (v.pointer || std::string_view(v.className) == "hkxScene") validCount++;
+    }
+    interface.NumVariants(validCount);
   }
 
-  void Save(BinWritterRef wr, hkFixups &fixups) const override {
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
     saver->Save(wr, fixups);
   }
 

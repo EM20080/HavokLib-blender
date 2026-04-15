@@ -23,7 +23,7 @@ struct hkxEnvironmentSaver {
   const hkxEnvironmentInternalInterface *in;
   const clgen::hkxEnvironment::Interface *out;
 
-  void Save(BinWritterRef wr, hkFixups &fixups) {
+  void Save(BinWritterRef_e wr, hkFixups &fixups) {
     const size_t sBegin = wr.Tell();
     auto &locals = fixups.locals;
     auto &lay = *out->layout;
@@ -44,7 +44,7 @@ struct hkxEnvironmentSaver {
         wr.Skip(varType->totalSize);
 
         for (auto v : varType->vtable) {
-          locals.emplace_back(varBegin + (v * varType->ptrSize));
+          locals.emplace_back(varBegin + v);
         }
       }
 
@@ -55,6 +55,7 @@ struct hkxEnvironmentSaver {
         wr.ApplyPadding(8);
         locals[curFixup + vm::value].destination = wr.Tell();
         wr.WriteBuffer(i.value.data(), i.value.size() + 1);
+        curFixup += vm::_count_;
       }
     }
   }
@@ -94,7 +95,7 @@ struct hkxEnvironmentMidInterface : hkxEnvironmentInternalInterface {
     interface.NumVariables(saver->in->Size());
   }
 
-  void Save(BinWritterRef wr, hkFixups &fixups) const override {
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
     saver->Save(wr, fixups);
   }
 

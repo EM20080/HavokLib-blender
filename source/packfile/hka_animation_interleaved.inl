@@ -33,41 +33,41 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   hkaAnimation::Interface BasehkaAnimation() const {
-    int16 off = m(basehkaAnimation); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::basehkaAnimation); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   Pointer<hkQTransform> TransformsPtr() {
-    int16 off = m(transforms); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::transforms); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   hkQTransform *Transforms() {
-    int16 off = m(transforms); if (off == -1) return nullptr;
+    int16 off = m(Members::transforms); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<hkQTransform**>(data + off);
     return *reinterpret_cast<es::PointerX86<hkQTransform>*>(data + off);
   }
   const hkQTransform *Transforms() const {
-    int16 off = m(transforms); if (off == -1) return nullptr;
+    int16 off = m(Members::transforms); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<hkQTransform**>(data + off);
     return *reinterpret_cast<es::PointerX86<hkQTransform>*>(data + off);
   }
-  uint32 NumTransforms() const { return m(numTransforms) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numTransforms)); }
+  uint32 NumTransforms() const { return m(Members::numTransforms) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numTransforms)); }
   Pointer<float> FloatsPtr() {
-    int16 off = m(floats); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::floats); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   float *Floats() {
-    int16 off = m(floats); if (off == -1) return nullptr;
+    int16 off = m(Members::floats); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
   const float *Floats() const {
-    int16 off = m(floats); if (off == -1) return nullptr;
+    int16 off = m(Members::floats); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<float**>(data + off);
     return *reinterpret_cast<es::PointerX86<float>*>(data + off);
   }
-  uint32 NumFloats() const { return m(numFloats) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numFloats)); }
-  void NumTransforms(uint32 value) { if (m(numTransforms) >= 0) *reinterpret_cast<uint32*>(data + m(numTransforms)) = value; }
-  void NumFloats(uint32 value) { if (m(numFloats) >= 0) *reinterpret_cast<uint32*>(data + m(numFloats)) = value; }
+  uint32 NumFloats() const { return m(Members::numFloats) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numFloats)); }
+  void NumTransforms(uint32 value) { if (m(Members::numTransforms) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numTransforms)) = value; }
+  void NumFloats(uint32 value) { if (m(Members::numFloats) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numFloats)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

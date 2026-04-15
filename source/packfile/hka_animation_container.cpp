@@ -29,7 +29,7 @@ struct hkaAnimationContainerSaver {
   const hkaAnimationContainerInternalInterface *in;
   const clgen::hkaAnimationContainer::Interface *out;
 
-  void Save(BinWritterRef wr, hkFixups &fixups) {
+  void Save(BinWritterRef_e wr, hkFixups &fixups) {
     const size_t sBegin = wr.Tell();
     auto &locals = fixups.locals;
     auto &lay = *out->layout;
@@ -38,7 +38,7 @@ struct hkaAnimationContainerSaver {
     wr.WriteBuffer(out->data, lay.totalSize);
 
     if (in->GetNumSkeletons()) {
-      wr.ApplyPadding(8);
+      wr.ApplyPadding();
       locals.emplace_back(sBegin + out->m(mm::skeletons), wr.Tell());
 
       for (auto s : in->Skeletons()) {
@@ -150,7 +150,7 @@ struct hkaAnimationContainerMidInterface
     interface.NumSkins(saver->in->GetNumSkins());
   }
 
-  void Save(BinWritterRef wr, hkFixups &fixups) const override {
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
     saver->Save(wr, fixups);
   }
 

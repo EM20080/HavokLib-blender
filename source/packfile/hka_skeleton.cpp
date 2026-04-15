@@ -21,11 +21,17 @@
 #include "spike/uni/list_vector.hpp"
 #include <span>
 
+template <> void FByteswapper(uni::RTSValue &v, bool) {
+  FByteswapper(v.translation);
+  FByteswapper(v.rotation);
+  FByteswapper(v.scale);
+}
+
 struct hkaSkeletonSaver {
   const hkaSkeletonInternalInterface *in;
   const clgen::hkaSkeleton::Interface *out;
 
-  void Save(BinWritterRef wr, hkFixups &fixups) {
+  void Save(BinWritterRef_e wr, hkFixups &fixups) {
     const size_t sBegin = wr.Tell();
     auto &locals = fixups.locals;
     auto &lay = *out->layout;
@@ -51,7 +57,7 @@ struct hkaSkeletonSaver {
       locals.emplace_back(sBegin + out->m(mm::transforms), wr.Tell());
 
       for (auto i : in->BoneTransforms()) {
-        wr.Write(i);
+        wr.Write(*i);
       }
 
       wr.ApplyPadding(8);
@@ -225,49 +231,51 @@ struct hkaSkeletonMidInterface : hkaSkeletonInternalInterface {
   }
 
   void SwapEndian() override {
+    size_t numPI = interface.NumParentIndices();
+    size_t numTM = interface.NumTransforms();
+    size_t numRF = interface.NumReferenceFloats();
+    size_t numParts = interface.NumPartitions();
+    size_t numLF = interface.NumLocalFrames();
+
     clgen::EndianSwap(interface);
 
-    for (std::span<int16> indices(interface.ParentIndices(),
-                                  interface.NumParentIndices());
-         auto &i : indices) {
-      FByteswapper(i);
+    if (auto p = interface.ParentIndices()) {
+      for (std::span<int16> indices(p, numPI); auto &i : indices) {
+        FByteswapper(i);
+      }
     }
 
-    for (std::span<hkQTransform> tms(interface.Transforms(),
-                                     interface.NumTransforms());
-         auto &i : tms) {
-      FByteswapper(i.rotation);
-      FByteswapper(i.scale);
-      FByteswapper(i.translation);
+    if (auto p = interface.Transforms()) {
+      for (std::span<hkQTransform> tms(p, numTM); auto &i : tms) {
+        FByteswapper(i.rotation);
+        FByteswapper(i.scale);
+        FByteswapper(i.translation);
+      }
     }
 
-    for (std::span<float> refs(interface.ReferenceFloats(),
-                               interface.NumReferenceFloats());
-         auto &i : refs) {
-      FByteswapper(i);
+    if (auto p = interface.ReferenceFloats()) {
+      for (std::span<float> refs(p, numRF); auto &i : refs) {
+        FByteswapper(i);
+      }
     }
 
-    {
-      size_t numParts = interface.NumPartitions();
+    if (numParts) {
       auto parts = interface.Partitions();
-
       for (size_t i = 0; i < numParts; i++, parts.Next()) {
         clgen::EndianSwap(parts);
       }
     }
 
-    {
-      size_t numParts = interface.NumLocalFrames();
+    if (numLF) {
       auto parts = interface.LocalFrames();
-
-      for (size_t i = 0; i < numParts; i++, parts.Next()) {
+      for (size_t i = 0; i < numLF; i++, parts.Next()) {
         clgen::EndianSwap(parts);
       }
     }
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    interface.data = static_cast<char *>(malloc(interface.layout->totalSize));
+    interface.data = static_cast<char *>(calloc(1, interface.layout->totalSize));
     saver = std::make_unique<hkaSkeletonSaver>();
     saver->in = static_cast<const hkaSkeletonInternalInterface *>(
         checked_deref_cast<const hkaSkeleton>(other));
@@ -281,7 +289,7 @@ struct hkaSkeletonMidInterface : hkaSkeletonInternalInterface {
     interface.NumLocalFrames(saver->in->GetNumLocalFrames());
   }
 
-  void Save(BinWritterRef wr, hkFixups &fixups) const override {
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
     saver->Save(wr, fixups);
   }
 

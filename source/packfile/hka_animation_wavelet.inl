@@ -42,47 +42,47 @@ struct Interface {
   Interface &operator=(Interface&&) = default;
   uint16 LayoutVersion() const { return lookup.version; }
   hkaAnimation::Interface BasehkaAnimation() const {
-    int16 off = m(basehkaAnimation); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::basehkaAnimation); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
-  uint32 NumberOfPoses() const { return m(numberOfPoses) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numberOfPoses)); }
-  uint32 BlockSize() const { return m(blockSize) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(blockSize)); }
-  QuantizationFormat QFormat() const { return m(qFormat) == -1 ? QuantizationFormat{} : *reinterpret_cast<QuantizationFormat*>(data + m(qFormat)); }
-  uint32 StaticMaskIdx() const { return m(staticMaskIdx) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(staticMaskIdx)); }
-  uint32 StaticDOFsIdx() const { return m(staticDOFsIdx) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(staticDOFsIdx)); }
-  uint32 BlockIndexIdx() const { return m(blockIndexIdx) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(blockIndexIdx)); }
-  uint32 BlockIndexSize() const { return m(blockIndexSize) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(blockIndexSize)); }
-  uint32 QuantizedDataIdx() const { return m(quantizedDataIdx) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(quantizedDataIdx)); }
-  uint32 QuantizedDataSize() const { return m(quantizedDataSize) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(quantizedDataSize)); }
+  uint32 NumberOfPoses() const { return m(Members::numberOfPoses) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numberOfPoses)); }
+  uint32 BlockSize() const { return m(Members::blockSize) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::blockSize)); }
+  QuantizationFormat QFormat() const { return m(Members::qFormat) == -1 ? QuantizationFormat{} : *reinterpret_cast<QuantizationFormat*>(data + m(Members::qFormat)); }
+  uint32 StaticMaskIdx() const { return m(Members::staticMaskIdx) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::staticMaskIdx)); }
+  uint32 StaticDOFsIdx() const { return m(Members::staticDOFsIdx) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::staticDOFsIdx)); }
+  uint32 BlockIndexIdx() const { return m(Members::blockIndexIdx) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::blockIndexIdx)); }
+  uint32 BlockIndexSize() const { return m(Members::blockIndexSize) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::blockIndexSize)); }
+  uint32 QuantizedDataIdx() const { return m(Members::quantizedDataIdx) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::quantizedDataIdx)); }
+  uint32 QuantizedDataSize() const { return m(Members::quantizedDataSize) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::quantizedDataSize)); }
   Pointer<char> DataBufferPtr() {
-    int16 off = m(dataBuffer); if (off == -1) return {nullptr, lookup};
+    int16 off = m(Members::dataBuffer); if (off == -1) return {nullptr, lookup};
     return {data + off, lookup};
   }
   char *DataBuffer() {
-    int16 off = m(dataBuffer); if (off == -1) return nullptr;
+    int16 off = m(Members::dataBuffer); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
   const char *DataBuffer() const {
-    int16 off = m(dataBuffer); if (off == -1) return nullptr;
+    int16 off = m(Members::dataBuffer); if (off == -1) return nullptr;
     if (layout->ptrSize == 8) return *reinterpret_cast<char**>(data + off);
     return *reinterpret_cast<es::PointerX86<char>*>(data + off);
   }
-  uint32 NumDataBuffer() const { return m(numDataBuffer) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numDataBuffer)); }
-  uint32 NumStaticTransformDOFs() const { return m(numStaticTransformDOFs) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numStaticTransformDOFs)); }
-  uint32 NumDynamicTransformDOFs() const { return m(numDynamicTransformDOFs) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(numDynamicTransformDOFs)); }
-  void NumberOfPoses(uint32 value) { if (m(numberOfPoses) >= 0) *reinterpret_cast<uint32*>(data + m(numberOfPoses)) = value; }
-  void BlockSize(uint32 value) { if (m(blockSize) >= 0) *reinterpret_cast<uint32*>(data + m(blockSize)) = value; }
-  void QFormat(QuantizationFormat value) { if (m(qFormat) >= 0) *reinterpret_cast<QuantizationFormat*>(data + m(qFormat)) = value; }
-  void StaticMaskIdx(uint32 value) { if (m(staticMaskIdx) >= 0) *reinterpret_cast<uint32*>(data + m(staticMaskIdx)) = value; }
-  void StaticDOFsIdx(uint32 value) { if (m(staticDOFsIdx) >= 0) *reinterpret_cast<uint32*>(data + m(staticDOFsIdx)) = value; }
-  void BlockIndexIdx(uint32 value) { if (m(blockIndexIdx) >= 0) *reinterpret_cast<uint32*>(data + m(blockIndexIdx)) = value; }
-  void BlockIndexSize(uint32 value) { if (m(blockIndexSize) >= 0) *reinterpret_cast<uint32*>(data + m(blockIndexSize)) = value; }
-  void QuantizedDataIdx(uint32 value) { if (m(quantizedDataIdx) >= 0) *reinterpret_cast<uint32*>(data + m(quantizedDataIdx)) = value; }
-  void QuantizedDataSize(uint32 value) { if (m(quantizedDataSize) >= 0) *reinterpret_cast<uint32*>(data + m(quantizedDataSize)) = value; }
-  void NumDataBuffer(uint32 value) { if (m(numDataBuffer) >= 0) *reinterpret_cast<uint32*>(data + m(numDataBuffer)) = value; }
-  void NumStaticTransformDOFs(uint32 value) { if (m(numStaticTransformDOFs) >= 0) *reinterpret_cast<uint32*>(data + m(numStaticTransformDOFs)) = value; }
-  void NumDynamicTransformDOFs(uint32 value) { if (m(numDynamicTransformDOFs) >= 0) *reinterpret_cast<uint32*>(data + m(numDynamicTransformDOFs)) = value; }
+  uint32 NumDataBuffer() const { return m(Members::numDataBuffer) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numDataBuffer)); }
+  uint32 NumStaticTransformDOFs() const { return m(Members::numStaticTransformDOFs) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numStaticTransformDOFs)); }
+  uint32 NumDynamicTransformDOFs() const { return m(Members::numDynamicTransformDOFs) == -1 ? uint32{} : *reinterpret_cast<uint32*>(data + m(Members::numDynamicTransformDOFs)); }
+  void NumberOfPoses(uint32 value) { if (m(Members::numberOfPoses) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numberOfPoses)) = value; }
+  void BlockSize(uint32 value) { if (m(Members::blockSize) >= 0) *reinterpret_cast<uint32*>(data + m(Members::blockSize)) = value; }
+  void QFormat(QuantizationFormat value) { if (m(Members::qFormat) >= 0) *reinterpret_cast<QuantizationFormat*>(data + m(Members::qFormat)) = value; }
+  void StaticMaskIdx(uint32 value) { if (m(Members::staticMaskIdx) >= 0) *reinterpret_cast<uint32*>(data + m(Members::staticMaskIdx)) = value; }
+  void StaticDOFsIdx(uint32 value) { if (m(Members::staticDOFsIdx) >= 0) *reinterpret_cast<uint32*>(data + m(Members::staticDOFsIdx)) = value; }
+  void BlockIndexIdx(uint32 value) { if (m(Members::blockIndexIdx) >= 0) *reinterpret_cast<uint32*>(data + m(Members::blockIndexIdx)) = value; }
+  void BlockIndexSize(uint32 value) { if (m(Members::blockIndexSize) >= 0) *reinterpret_cast<uint32*>(data + m(Members::blockIndexSize)) = value; }
+  void QuantizedDataIdx(uint32 value) { if (m(Members::quantizedDataIdx) >= 0) *reinterpret_cast<uint32*>(data + m(Members::quantizedDataIdx)) = value; }
+  void QuantizedDataSize(uint32 value) { if (m(Members::quantizedDataSize) >= 0) *reinterpret_cast<uint32*>(data + m(Members::quantizedDataSize)) = value; }
+  void NumDataBuffer(uint32 value) { if (m(Members::numDataBuffer) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numDataBuffer)) = value; }
+  void NumStaticTransformDOFs(uint32 value) { if (m(Members::numStaticTransformDOFs) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numStaticTransformDOFs)) = value; }
+  void NumDynamicTransformDOFs(uint32 value) { if (m(Members::numDynamicTransformDOFs) >= 0) *reinterpret_cast<uint32*>(data + m(Members::numDynamicTransformDOFs)) = value; }
 
 
   int16 m(uint32 id) const { return layout->vtable[id]; }

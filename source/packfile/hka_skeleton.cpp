@@ -77,13 +77,13 @@ struct hkaSkeletonSaver {
         }
 
         for (size_t i = 0; i < numBones; i++) {
-          wr.ApplyPadding(8);
+          wr.ApplyPadding(16);
           fixups.globals[curGFixup++].destination = wr.Tell();
           const size_t bneBegin = wr.Tell();
           fndFinal->destination = bneBegin;
           fndFinal++;
           wr.Skip(boneType->totalSize);
-          wr.ApplyPadding(8);
+          wr.ApplyPadding(16);
           locals.emplace_back(bneBegin, wr.Tell());
           wr.WriteContainer(in->GetBoneName(i));
           wr.Skip(1);

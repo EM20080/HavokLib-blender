@@ -136,7 +136,7 @@ struct hkxHeader : hkxHeaderData, IhkPackFile {
   hkxHeader() : toolset(HKUNKVER) {}
 
   void Load(BinReaderRef_e rd);
-  void Save(BinWritterRef wr, const VirtualClasses &classes) const;
+  void Save(BinWritterRef_e wr, const VirtualClasses &classes) const;
   hkxSectionHeader *GetDataSection() { return &sections[contentsSectionIndex]; }
   VirtualClasses &GetAllClasses() override {
     return GetDataSection()->virtualClasses;

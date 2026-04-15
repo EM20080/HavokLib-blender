@@ -138,7 +138,8 @@ struct hkaAnimationContainerMidInterface
   void SwapEndian() override { clgen::EndianSwap(interface); }
 
   void Reflect(const IhkVirtualClass *other) override {
-    interface.data = static_cast<char *>(malloc(interface.layout->totalSize));
+    interface.data =
+        static_cast<char *>(calloc(1, interface.layout->totalSize));
     saver = std::make_unique<hkaAnimationContainerSaver>();
     saver->in = static_cast<const hkaAnimationContainerInternalInterface *>(
         checked_deref_cast<const hkaAnimationContainer>(other));
@@ -148,6 +149,26 @@ struct hkaAnimationContainerMidInterface
     interface.NumBindings(saver->in->GetNumBindings());
     interface.NumAttachments(saver->in->GetNumAttachments());
     interface.NumSkins(saver->in->GetNumSkins());
+
+    auto setLockedArrayCapacity = [&](clgen::hkaAnimationContainer::Members member,
+                                      uint32 count) {
+      int16 off = interface.m(member);
+      if (off >= 0) {
+        *reinterpret_cast<uint32 *>(interface.data + off + 4) =
+            0x80000000u | count;
+      }
+    };
+
+    setLockedArrayCapacity(clgen::hkaAnimationContainer::Members::numSkeletons,
+                           saver->in->GetNumSkeletons());
+    setLockedArrayCapacity(clgen::hkaAnimationContainer::Members::numAnimations,
+                           saver->in->GetNumAnimations());
+    setLockedArrayCapacity(clgen::hkaAnimationContainer::Members::numBindings,
+                           saver->in->GetNumBindings());
+    setLockedArrayCapacity(clgen::hkaAnimationContainer::Members::numAttachments,
+                           saver->in->GetNumAttachments());
+    setLockedArrayCapacity(clgen::hkaAnimationContainer::Members::numSkins,
+                           saver->in->GetNumSkins());
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {

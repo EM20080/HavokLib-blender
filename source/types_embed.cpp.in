@@ -1,0 +1,22 @@
+#include "types_embed.hpp"
+
+static const uint8_t hk550SkelTypes[]   = {@_HK550_SKEL_BYTES@};
+static const uint8_t hk550SkelTypesBE[] = {@_HK550_SKEL_BE_BYTES@};
+static const uint8_t hk2010SkelTypes[]  = {@_HK2010_SKEL_BYTES@};
+static const uint8_t hk2012SkelTypes[]  = {@_HK2012_SKEL_BYTES@};
+
+EmbeddedTypes GetEmbeddedTypes(hkToolset toolset, bool bigEndian) {
+  switch (toolset) {
+  case HK550:
+    if (bigEndian)
+      return {hk550SkelTypesBE, sizeof(hk550SkelTypesBE), true};
+    return {hk550SkelTypes, sizeof(hk550SkelTypes), false};
+  case HK2010_2:
+    return {hk2010SkelTypes, sizeof(hk2010SkelTypes), false};
+  case HK2012_2:
+    return {hk2012SkelTypes, sizeof(hk2012SkelTypes), false};
+  default:
+    break;
+  }
+  return {nullptr, 0};
+}

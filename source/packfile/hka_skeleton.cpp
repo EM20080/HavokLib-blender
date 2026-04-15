@@ -46,7 +46,7 @@ struct hkaSkeletonSaver {
     const size_t numBones = in->GetNumBones();
 
     if (numBones) {
-      wr.ApplyPadding(8);
+      wr.ApplyPadding();
       locals.emplace_back(sBegin + out->m(mm::parentIndices), wr.Tell());
 
       for (auto i : in->BoneParentIDs()) {
@@ -54,13 +54,6 @@ struct hkaSkeletonSaver {
       }
 
       wr.ApplyPadding();
-      locals.emplace_back(sBegin + out->m(mm::transforms), wr.Tell());
-
-      for (auto i : in->BoneTransforms()) {
-        wr.Write(*i);
-      }
-
-      wr.ApplyPadding(8);
       locals.emplace_back(sBegin + out->m(mm::bones), wr.Tell());
       size_t curFixup = locals.size();
       const auto boneType =
@@ -68,6 +61,8 @@ struct hkaSkeletonSaver {
 
       if (out->LayoutVersion() < HK700) {
         size_t curGFixup = fixups.globals.size();
+        std::vector<size_t> boneNameFixups;
+        boneNameFixups.reserve(numBones);
 
         for (size_t i = 0; i < numBones; i++) {
           fixups.globals.emplace_back(wr.Tell());
@@ -89,8 +84,13 @@ struct hkaSkeletonSaver {
           fndFinal->destination = bneBegin;
           fndFinal++;
           wr.Skip(boneType->totalSize);
+          boneNameFixups.push_back(locals.size());
+          locals.emplace_back(bneBegin);
+        }
+
+        for (size_t i = 0; i < numBones; i++) {
           wr.ApplyPadding(16);
-          locals.emplace_back(bneBegin, wr.Tell());
+          locals[boneNameFixups[i]].destination = wr.Tell();
           wr.WriteContainer(in->GetBoneName(i));
           wr.Skip(1);
         }
@@ -100,11 +100,18 @@ struct hkaSkeletonSaver {
           wr.Skip(boneType->totalSize);
         }
         for (auto i : in->BoneNames()) {
-          wr.ApplyPadding(8);
+          wr.ApplyPadding(16);
           locals[curFixup++].destination = wr.Tell();
           wr.WriteContainer(i);
           wr.Skip(1);
         }
+      }
+
+      wr.ApplyPadding();
+      locals.emplace_back(sBegin + out->m(mm::transforms), wr.Tell());
+
+      for (auto i : in->BoneTransforms()) {
+        wr.Write(*i);
       }
     }
   }
@@ -287,6 +294,30 @@ struct hkaSkeletonMidInterface : hkaSkeletonInternalInterface {
     interface.NumReferenceFloats(saver->in->GetNumReferenceFloats());
     interface.NumPartitions(saver->in->GetNumPartitions());
     interface.NumLocalFrames(saver->in->GetNumLocalFrames());
+
+    auto setLockedArrayCapacity = [&](clgen::hkaSkeleton::Members member,
+                                      uint32 count) {
+      int16 off = interface.m(member);
+      if (off >= 0) {
+        *reinterpret_cast<uint32 *>(interface.data + off + 4) =
+            0x80000000u | count;
+      }
+    };
+
+    setLockedArrayCapacity(clgen::hkaSkeleton::Members::numParentIndices,
+                           saver->in->GetNumBones());
+    setLockedArrayCapacity(clgen::hkaSkeleton::Members::numBones,
+                           saver->in->GetNumBones());
+    setLockedArrayCapacity(clgen::hkaSkeleton::Members::numTransforms,
+                           saver->in->GetNumBones());
+    setLockedArrayCapacity(clgen::hkaSkeleton::Members::numFloatSlots,
+                           saver->in->GetNumFloatSlots());
+    setLockedArrayCapacity(clgen::hkaSkeleton::Members::numReferenceFloats,
+                           saver->in->GetNumReferenceFloats());
+    setLockedArrayCapacity(clgen::hkaSkeleton::Members::numPartitions,
+                           saver->in->GetNumPartitions());
+    setLockedArrayCapacity(clgen::hkaSkeleton::Members::numLocalFrames,
+                           saver->in->GetNumLocalFrames());
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {

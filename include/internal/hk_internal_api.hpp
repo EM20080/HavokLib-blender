@@ -84,7 +84,7 @@ struct hkVirtualClass {
   virtual void SetDataPointer(void *Ptr) = 0;
   virtual void ToXML(XMLHandle) const {}
   virtual void Reflect(const IhkVirtualClass *) {}
-  virtual void Save(BinWritterRef wr, hkFixups &fixups) const;
+  virtual void Save(BinWritterRef_e wr, hkFixups &fixups) const;
   virtual ~hkVirtualClass() = default;
 
   static IhkVirtualClass *Create(JenHash hash, CRule rule);

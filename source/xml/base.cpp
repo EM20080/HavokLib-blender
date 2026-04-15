@@ -42,11 +42,11 @@ static void PointerToString(const void *ptr, std::string &str) {
 template <class C> static void ExportReflectedClass(C &input, XMLnode &parent) {
   ReflectorWrap<const C> refl(input);
 
-  for (size_t t = 0; t < refl.GetNumReflectedValues(); t++) {
-    Reflector::KVPair pair = refl.GetReflectedPair(t);
+  for (size_t t = 0; t < refl.NumReflectedValues(); t++) {
+    auto kvp = refl[t].ReflectedPair();
     XMLnode nameNode = parent.append_child(_hkParam);
-    nameNode.append_attribute(_hkName).set_value(pair.name.data());
-    nameNode.append_buffer(pair.value.c_str(), pair.value.size());
+    nameNode.append_attribute(_hkName).set_value(kvp.name.data());
+    nameNode.append_buffer(kvp.value.c_str(), kvp.value.size());
   }
 }
 

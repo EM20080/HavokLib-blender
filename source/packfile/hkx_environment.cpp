@@ -87,7 +87,8 @@ struct hkxEnvironmentMidInterface : hkxEnvironmentInternalInterface {
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    interface.data = static_cast<char *>(malloc(interface.layout->totalSize));
+    interface.data =
+        static_cast<char *>(calloc(1, interface.layout->totalSize));
     saver = std::make_unique<hkxEnvironmentSaver>();
     saver->in = static_cast<const hkxEnvironmentInternalInterface *>(
         checked_deref_cast<const hkxEnvironment>(other));

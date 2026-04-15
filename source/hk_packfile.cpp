@@ -148,4 +148,4 @@ const hkRootLevelContainer *IhkPackFile::GetRootLevelContainer() {
       GetClasses(hkRootLevelContainer::GetHash())[0]);
 }
 
-void hkVirtualClass::Save(BinWritterRef, hkFixups &) const {}
+void hkVirtualClass::Save(BinWritterRef_e, hkFixups &) const {}

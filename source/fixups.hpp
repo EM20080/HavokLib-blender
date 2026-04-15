@@ -17,6 +17,8 @@
 
 #pragma once
 #include <cstddef>
+#include <string>
+#include <utility>
 #include <vector>
 
 struct IhkVirtualClass;
@@ -36,4 +38,7 @@ struct hkFixups {
   std::vector<hkFixup> locals;
   std::vector<hkFixup> finals;
   std::vector<hkFixup> globals;
+  std::vector<std::pair<size_t, std::string>> classDescs;
+  size_t hkxScenePtrOff{static_cast<size_t>(-1)};
+  bool hasHkxSceneVariant{false};
 };

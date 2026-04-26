@@ -22,8 +22,78 @@
 
 #include "hka_animation_binding.inl"
 
+namespace {
+
+void SetLockedArrayCapacity(char *data, int16 countOffset, uint32 count) {
+  if (countOffset < 0) {
+    return;
+  }
+
+  *reinterpret_cast<uint32 *>(data + countOffset + 4) = 0x80000000u | count;
+}
+
+struct hkaAnimationBindingSaver {
+  const hkaAnimationBindingInternalInterface *in;
+  const clgen::hkaAnimationBinding::Interface *out;
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) {
+    const size_t sBegin = wr.Tell();
+    auto &locals = fixups.locals;
+    auto &lay = *out->layout;
+    using mm = clgen::hkaAnimationBinding::Members;
+
+    wr.WriteBuffer(out->data, lay.totalSize);
+
+    if (out->m(mm::animation) >= 0 && in->GetAnimation()) {
+      locals.emplace_back(sBegin + out->m(mm::animation), in->GetAnimation());
+    }
+
+    if (out->m(mm::skeletonName) >= 0) {
+      auto skeletonName = in->GetSkeletonName();
+      wr.ApplyPadding();
+      locals.emplace_back(sBegin + out->m(mm::skeletonName), wr.Tell());
+      wr.WriteBuffer(skeletonName.data(), skeletonName.size());
+      wr.Skip(1);
+    }
+
+    if (const auto numTracks = in->GetNumTransformTrackToBoneIndices();
+        numTracks) {
+      wr.ApplyPadding();
+      locals.emplace_back(sBegin + out->m(mm::transformTrackToBoneIndices),
+                          wr.Tell());
+
+      for (auto index : in->TransformTrackToBoneIndices()) {
+        wr.Write(index);
+      }
+    }
+
+    if (const auto numTracks = in->GetNumFloatTrackToFloatSlotIndices();
+        numTracks) {
+      wr.ApplyPadding();
+      locals.emplace_back(sBegin + out->m(mm::floatTrackToFloatSlotIndices),
+                          wr.Tell());
+
+      for (auto index : in->FloatTrackToFloatSlotIndices()) {
+        wr.Write(index);
+      }
+    }
+
+    if (const auto numTracks = in->GetNumPartitionIndices(); numTracks) {
+      wr.ApplyPadding();
+      locals.emplace_back(sBegin + out->m(mm::partitionIndices), wr.Tell());
+
+      for (auto index : in->PartitionIndices()) {
+        wr.Write(index);
+      }
+    }
+  }
+};
+
+} // namespace
+
 struct hkaAnimationBindingMidInterface : hkaAnimationBindingInternalInterface {
   clgen::hkaAnimationBinding::Interface interface;
+  std::unique_ptr<hkaAnimationBindingSaver> saver;
 
   hkaAnimationBindingMidInterface(clgen::LayoutLookup rules, char *data)
       : interface {
@@ -40,22 +110,27 @@ struct hkaAnimationBindingMidInterface : hkaAnimationBindingInternalInterface {
   void SwapEndian() override {
     clgen::EndianSwap(interface);
 
-    for (std::span<int16> indices(interface.TransformTrackToBoneIndices(),
-                                  interface.NumTransformTrackToBoneIndices());
-         auto &i : indices) {
-      FByteswapper(i);
+    if (auto indicesData = interface.TransformTrackToBoneIndices()) {
+      for (std::span<int16> indices(indicesData,
+                                    interface.NumTransformTrackToBoneIndices());
+           auto &i : indices) {
+        FByteswapper(i);
+      }
     }
 
-    for (std::span<int16> indices(interface.FloatTrackToFloatSlotIndices(),
-                                  interface.NumFloatTrackToFloatSlotIndices());
-         auto &i : indices) {
-      FByteswapper(i);
+    if (auto indicesData = interface.FloatTrackToFloatSlotIndices()) {
+      for (std::span<int16> indices(
+               indicesData, interface.NumFloatTrackToFloatSlotIndices());
+           auto &i : indices) {
+        FByteswapper(i);
+      }
     }
 
-    for (std::span<int16> indices(interface.PartitionIndices(),
-                                  interface.NumPartitionIndices());
-         auto &i : indices) {
-      FByteswapper(i);
+    if (auto indicesData = interface.PartitionIndices()) {
+      for (std::span<int16> indices(indicesData, interface.NumPartitionIndices());
+           auto &i : indices) {
+        FByteswapper(i);
+      }
     }
   }
 
@@ -87,6 +162,59 @@ struct hkaAnimationBindingMidInterface : hkaAnimationBindingInternalInterface {
   }
   int16 GetPartitionIndex(size_t id) const override {
     return interface.PartitionIndices()[id];
+  }
+
+  void Reflect(const IhkVirtualClass *other) override {
+    auto source = dynamic_cast<const hkaAnimationBindingInternalInterface *>(
+        other);
+
+    if (!source) {
+      throw std::bad_cast{};
+    }
+
+    interface.data =
+        static_cast<char *>(calloc(1, interface.layout->totalSize));
+    saver = std::make_unique<hkaAnimationBindingSaver>();
+    saver->in = source;
+    saver->out = &interface;
+
+    interface.BlendHint(source->GetBlendHint());
+    interface.NumTransformTrackToBoneIndices(
+        static_cast<uint32>(source->GetNumTransformTrackToBoneIndices()));
+    interface.NumFloatTrackToFloatSlotIndices(
+        static_cast<uint32>(source->GetNumFloatTrackToFloatSlotIndices()));
+    interface.NumPartitionIndices(
+        static_cast<uint32>(source->GetNumPartitionIndices()));
+
+    if (interface.LayoutVersion() >= HK700) {
+      SetLockedArrayCapacity(
+          interface.data,
+          interface.m(clgen::hkaAnimationBinding::Members::
+                          numTransformTrackToBoneIndices),
+          static_cast<uint32>(source->GetNumTransformTrackToBoneIndices()));
+      SetLockedArrayCapacity(
+          interface.data,
+          interface.m(clgen::hkaAnimationBinding::Members::
+                          numFloatTrackToFloatSlotIndices),
+          static_cast<uint32>(source->GetNumFloatTrackToFloatSlotIndices()));
+    }
+
+    if (interface.LayoutVersion() >= HK2012_1) {
+      SetLockedArrayCapacity(
+          interface.data,
+          interface.m(clgen::hkaAnimationBinding::Members::numPartitionIndices),
+          static_cast<uint32>(source->GetNumPartitionIndices()));
+    }
+  }
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    saver->Save(wr, fixups);
+  }
+
+  ~hkaAnimationBindingMidInterface() {
+    if (saver) {
+      free(interface.data);
+    }
   }
 };
 

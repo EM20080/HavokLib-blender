@@ -21,11 +21,40 @@
 
 #include "hka_animated_reference_frame_default.inl"
 
+namespace {
+
+struct hkaDefaultAnimatedReferenceFrameSaver {
+  const hkaAnimatedReferenceFrameInternalInterface *in;
+  const clgen::hkaDefaultAnimatedReferenceFrame::Interface *out;
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) {
+    const size_t sBegin = wr.Tell();
+    auto &locals = fixups.locals;
+    auto &lay = *out->layout;
+    using mm = clgen::hkaDefaultAnimatedReferenceFrame::Members;
+
+    wr.WriteBuffer(out->data, lay.totalSize);
+
+    if (const auto numFrames = in->GetNumFrames(); numFrames) {
+      wr.ApplyPadding();
+      locals.emplace_back(
+          sBegin + out->m(mm::referenceFrameSamples), wr.Tell());
+
+      for (size_t i = 0; i < numFrames; i++) {
+        wr.Write(in->GetRefFrame(i));
+      }
+    }
+  }
+};
+
+} // namespace
+
 struct hkaDefaultAnimatedReferenceFrameMidInterface
     : hkaAnimatedReferenceFrameMidInterface,
       hkaDefaultAnimatedReferenceFrameInternalInterface {
 
   clgen::hkaDefaultAnimatedReferenceFrame::Interface interface;
+  std::unique_ptr<hkaDefaultAnimatedReferenceFrameSaver> saver;
 
   hkaDefaultAnimatedReferenceFrameMidInterface(clgen::LayoutLookup rules,
                                                char *data)
@@ -70,10 +99,48 @@ struct hkaDefaultAnimatedReferenceFrameMidInterface
     FByteswapper(tmp);
     interface.Forward(tmp);
 
-    for (std::span<Vector4A16> refs(interface.ReferenceFrameSamples(),
-                                    interface.NumReferenceFrameSamples());
-         auto &i : refs) {
-      FByteswapper(i);
+    if (auto refsData = interface.ReferenceFrameSamples()) {
+      for (std::span<Vector4A16> refs(refsData,
+                                      interface.NumReferenceFrameSamples());
+           auto &i : refs) {
+        FByteswapper(i);
+      }
+    }
+  }
+
+  void Reflect(const IhkVirtualClass *other) override {
+    auto source = dynamic_cast<const hkaAnimatedReferenceFrameInternalInterface *>(
+        other);
+
+    if (!source) {
+      throw std::bad_cast{};
+    }
+
+    interface.data =
+        static_cast<char *>(calloc(1, interface.layout->totalSize));
+    saver = std::make_unique<hkaDefaultAnimatedReferenceFrameSaver>();
+    saver->in = source;
+    saver->out = &interface;
+
+    interface.Up(source->GetUp());
+    interface.Forward(source->GetForward());
+    interface.Duration(source->GetDuration());
+    interface.NumReferenceFrameSamples(
+        static_cast<uint32>(source->GetNumFrames()));
+
+    auto base = interface.BasehkaAnimatedReferenceFrame();
+    if (base.m(clgen::hkaAnimatedReferenceFrame::Members::frameType) >= 0) {
+      base.FrameType(source->GetType());
+    }
+  }
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    saver->Save(wr, fixups);
+  }
+
+  ~hkaDefaultAnimatedReferenceFrameMidInterface() {
+    if (saver) {
+      free(interface.data);
     }
   }
 };

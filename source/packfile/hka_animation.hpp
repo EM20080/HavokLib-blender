@@ -75,7 +75,21 @@ struct hkaAnnotationTrackMidInterface : hkaAnnotationTrackInternalInterface {
   void SwapEndian() override {
     clgen::EndianSwap(interface);
 
-    {
+    auto hasData = [&](int16 off) {
+      if (off < 0) {
+        return false;
+      }
+
+      if (interface.layout->ptrSize == 8) {
+        return *reinterpret_cast<char **>(interface.data + off) != nullptr;
+      }
+
+      return static_cast<char *>(
+                 *reinterpret_cast<es::PointerX86<char> *>(interface.data + off)) !=
+             nullptr;
+    };
+
+    if (hasData(interface.m(clgen::hkaAnnotationTrack::Members::annotations))) {
       size_t numParts = interface.NumAnnotations();
       auto parts = interface.Annotations();
 
@@ -134,21 +148,41 @@ struct hkaAnimationMidInterface : virtual ParentInterface {
     auto base = Anim();
     clgen::EndianSwap(base);
 
-    {
-      size_t numParts = base.NumAnnotations();
+    auto hasData = [&](int16 off) {
+      if (off < 0) {
+        return false;
+      }
 
-      if (base.LayoutVersion() >= HK700) {
+      if (base.layout->ptrSize == 8) {
+        return *reinterpret_cast<char **>(base.data + off) != nullptr;
+      }
+
+      return static_cast<char *>(
+                 *reinterpret_cast<es::PointerX86<char> *>(base.data + off)) !=
+             nullptr;
+    };
+
+    if (base.LayoutVersion() >= HK700) {
+      if (hasData(base.m(clgen::hkaAnimation::Members::annotations))) {
+        size_t numParts = base.NumAnnotations();
         auto parts = base.AnnotationsHK700();
 
         for (size_t i = 0; i < numParts; i++, parts.Next()) {
           hkaAnnotationTrackMidInterface{parts}.SwapEndian();
         }
       } else {
+        return;
+      }
+    } else {
+      if (hasData(base.m(clgen::hkaAnimation::Members::annotations))) {
+        size_t numParts = base.NumAnnotations();
         auto parts = base.Annotations();
 
         for (size_t i = 0; i < numParts; i++, parts.Next()) {
           hkaAnnotationTrackMidInterface{**parts}.SwapEndian();
         }
+      } else {
+        return;
       }
     }
   }

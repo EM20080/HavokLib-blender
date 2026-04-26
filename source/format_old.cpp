@@ -19,6 +19,7 @@
 
 #include "fixups.hpp"
 #include "format_old.hpp"
+#include "hklib/hka_animation.hpp"
 #include "hklib/hka_skeleton.hpp"
 #include "hklib/hk_rootlevelcontainer.hpp"
 #include "internal/hk_internal_api.hpp"
@@ -364,11 +365,13 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   }
 
   std::unordered_map<std::string, size_t> cnOffsetMap;
-  const int32 dataSectionId = 1;
+  const int32 dataSectionId = 2;
 
   wr.SwapEndian((layout.littleEndian != 0) != LittleEndian());
 
   hkxHeaderData hdr = *this;
+  hdr.numSections = 3;
+  hdr.contentsSectionIndex = dataSectionId;
   if (toolset == HK550)
     hdr.flags = 0xFFFFFFFF;
   hdr.maxpredicate = -1;
@@ -385,6 +388,19 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
 
   wr.Push();
   wr.Write<hkxSectionHeaderData>(classSection);
+
+  if (version == 11) {
+    wr.Skip(16);
+  }
+
+  hkxSectionHeader typeSection{};
+  std::string_view typeSectionTag = "__types__";
+  memset(typeSection.sectionTag, 0, sizeof(typeSection.sectionTag));
+  typeSection.sectionTag[sizeof(typeSection.sectionTag) - 1] = char(0xFF);
+  memcpy(typeSection.sectionTag, typeSectionTag.data(),
+         typeSectionTag.size() + 1);
+
+  wr.Write<hkxSectionHeaderData>(typeSection);
 
   if (version == 11) {
     wr.Skip(16);
@@ -409,14 +425,122 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   hkFixups fixups;
   std::unordered_map<const IhkVirtualClass *, IhkVirtualClass *> clsRemap;
 
+  auto getClassSignature = [&](std::string_view name) {
+    if (toolset == HK550) {
+      static const std::pair<std::string_view, uint32> signatures[] = {
+          {"hkClass", 0x38771F8E},
+          {"hkClassMember", 0xA5240F57},
+          {"hkClassEnum", 0x8A3609CF},
+          {"hkClassEnumItem", 0xCE6F8A6C},
+          {"hkRootLevelContainer", 0xF598A34E},
+          {"hkaAnimatedReferenceFrame", 0xDA8C7D7D},
+          {"hkxMeshUserChannelInfo", 0x64E9A03C},
+          {"hkxAttribute", 0x914DA6C1},
+          {"hkaAnnotationTrackAnnotation", 0x731888CA},
+          {"hkaSkeletalAnimation", 0x98F9313D},
+          {"hkBaseObject", 0xE0708A00},
+          {"hkxAttributeHolder", 0x445A443A},
+          {"hkxMaterial", 0xF2EC0C9C},
+          {"hkxIndexBuffer", 0x1C8A8C37},
+          {"hkxMaterialTextureStage", 0xE085BA9F},
+          {"hkaInterleavedSkeletalAnimation", 0x62B02E7B},
+          {"hkaBone", 0xA74011F0},
+          {"hkxMesh", 0x72E8E849},
+          {"hkxMeshSection", 0x912C8863},
+          {"hkaBoneAttachment", 0x8BDD3E9A},
+          {"hkaDefaultAnimatedReferenceFrame", 0x122F506B},
+          {"hkaSkeleton", 0x334DBE6C},
+          {"hkRootLevelContainerNamedVariant", 0x853A899C},
+          {"hkxVertexFormat", 0x379FD194},
+          {"hkaMeshBindingMapping", 0x4DA6A6F4},
+          {"hkxAttributeGroup", 0x1667C01C},
+          {"hkxVertexBuffer", 0x57061454},
+          {"hkaMeshBinding", 0xCDB31E0C},
+          {"hkReferencedObject", 0x3B1C1113},
+          {"hkaAnimationContainer", 0xF456626D},
+          {"hkaAnnotationTrack", 0x846FC690},
+          {"hkaAnimationBinding", 0xFB496074},
+      };
+
+      for (auto &sig : signatures) {
+        if (sig.first == name) {
+          return sig.second;
+        }
+      }
+    } else if (toolset == HK2010_1 || toolset == HK2010_2) {
+      static const std::pair<std::string_view, uint32> signatures[] = {
+          {"hkClass", 0x75585EF6},
+          {"hkClassMember", 0x5C7EA4C2},
+          {"hkClassEnum", 0x8A3609CF},
+          {"hkClassEnumItem", 0xCE6F8A6C},
+          {"hkRootLevelContainer", 0x2772C11E},
+          {"hkaAnimationContainer", 0x8DC20333},
+          {"hkaInterleavedUncompressedAnimation", 0x930AF031},
+          {"hkaDefaultAnimatedReferenceFrame", 0x6D85E445},
+          {"hkaAnimationBinding", 0x66EAC971},
+      };
+
+      for (auto &sig : signatures) {
+        if (sig.first == name) {
+          return sig.second;
+        }
+      }
+    }
+
+    return JenHash(name).raw();
+  };
+
+  auto writeClassName = [&](std::string_view name) {
+    wr.Write(getClassSignature(name));
+    wr.Write('\t');
+    cnOffsetMap[std::string(name)] = wr.Tell();
+    wr.WriteContainer(name);
+    wr.Skip(1);
+  };
+
   static const std::string_view reqClassNames[] = {
       "hkClass", "hkClassMember", "hkClassEnum", "hkClassEnumItem"};
   for (auto &c : reqClassNames) {
-    wr.Write<uint32>(0);
-    wr.Write('\t');
-    cnOffsetMap[std::string(c)] = wr.Tell();
-    wr.WriteContainer(c);
-    wr.Skip(1);
+    writeClassName(c);
+  }
+
+  if (toolset == HK550) {
+    static const std::string_view legacy550ClassNames[] = {
+        "hkRootLevelContainer",
+        "hkaAnimatedReferenceFrame",
+        "hkxMeshUserChannelInfo",
+        "hkxAttribute",
+        "hkaAnnotationTrackAnnotation",
+        "hkaSkeletalAnimation",
+        "hkBaseObject",
+        "hkxAttributeHolder",
+        "hkxMaterial",
+        "hkxIndexBuffer",
+        "hkxMaterialTextureStage",
+        "hkaInterleavedSkeletalAnimation",
+        "hkaBone",
+        "hkxMesh",
+        "hkxMeshSection",
+        "hkaBoneAttachment",
+        "hkaDefaultAnimatedReferenceFrame",
+        "hkaSkeleton",
+        "hkRootLevelContainerNamedVariant",
+        "hkxVertexFormat",
+        "hkaMeshBindingMapping",
+        "hkxAttributeGroup",
+        "hkxVertexBuffer",
+        "hkaMeshBinding",
+        "hkReferencedObject",
+        "hkaAnimationContainer",
+        "hkaAnnotationTrack",
+        "hkaAnimationBinding",
+    };
+
+    for (auto &c : legacy550ClassNames) {
+      if (!cnOffsetMap.contains(std::string(c))) {
+        writeClassName(c);
+      }
+    }
   }
 
   CRule rule(toolset, layout.reusePaddingOptimization,
@@ -448,13 +572,10 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     if (mapIt != cnOffsetMap.end()) {
       fixups.finals.emplace_back(mapIt->second);
     } else {
-      wr.Write<uint32>(0);
-      wr.Write('\t');
-      size_t nameOff = wr.Tell();
+      const size_t entryOff = wr.Tell();
+      writeClassName(clName);
+      size_t nameOff = entryOff + 5;
       fixups.finals.emplace_back(nameOff);
-      cnOffsetMap[std::string(clName)] = nameOff;
-      wr.WriteContainer(clName);
-      wr.Skip(1);
     }
 
     if (toolset < HK700 && clName == "hkaSkeleton") {
@@ -463,11 +584,9 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
       if (boneIt != cnOffsetMap.end()) {
         boneOff = boneIt->second;
       } else {
-        wr.Write<uint32>(0);
-        wr.Write('\t');
-        boneOff = wr.Tell();
-        cnOffsetMap["hkaBone"] = boneOff;
-        wr.WriteT("hkaBone");
+        const size_t entryOff = wr.Tell();
+        writeClassName("hkaBone");
+        boneOff = entryOff + 5;
       }
 
       const size_t numBones =
@@ -475,6 +594,26 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
 
       for (size_t i = 0; i < numBones; i++) {
         fixups.finals.emplace_back(boneOff, c.get());
+      }
+    }
+
+    if (toolset < HK700) {
+      auto hkAnim = safe_deref_cast<const hkaAnimation>(c.get());
+
+      if (hkAnim && hkAnim->GetAnimationType() == HK_INTERLEAVED_ANIMATION) {
+        size_t trackOff;
+        auto trackIt = cnOffsetMap.find("hkaAnnotationTrack");
+        if (trackIt != cnOffsetMap.end()) {
+          trackOff = trackIt->second;
+        } else {
+          const size_t entryOff = wr.Tell();
+          writeClassName("hkaAnnotationTrack");
+          trackOff = entryOff + 5;
+        }
+
+        for (size_t i = 0; i < hkAnim->GetNumAnnotations(); i++) {
+          fixups.finals.emplace_back(trackOff, c.get());
+        }
       }
     }
 
@@ -490,11 +629,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
             break;
           }
 
-          wr.Write<uint32>(0);
-          wr.Write('\t');
-          const size_t nameOff = wr.Tell();
-          cnOffsetMap["hkxScene"] = nameOff;
-          wr.WriteT("hkxScene");
+          writeClassName("hkxScene");
           break;
         }
       }
@@ -510,6 +645,15 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   classSection.importsOffset = classSection.bufferSize;
   classSection.localFixupsOffset = classSection.bufferSize;
   classSection.virtualFixupsOffset = classSection.bufferSize;
+  wr.ApplyPadding();
+
+  typeSection.absoluteDataStart = static_cast<uint32>(wr.Tell());
+  typeSection.bufferSize = 0;
+  typeSection.exportsOffset = 0;
+  typeSection.globalFixupsOffset = 0;
+  typeSection.importsOffset = 0;
+  typeSection.localFixupsOffset = 0;
+  typeSection.virtualFixupsOffset = 0;
   wr.ApplyPadding();
 
   mainSection.absoluteDataStart = static_cast<uint32>(wr.Tell());
@@ -628,6 +772,12 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   wr.ResetRelativeOrigin(false);
   wr.Pop();
   wr.Write<hkxSectionHeaderData>(classSection);
+
+  if (version == 11) {
+    wr.Skip(16);
+  }
+
+  wr.Write<hkxSectionHeaderData>(typeSection);
 
   if (version == 11) {
     wr.Skip(16);

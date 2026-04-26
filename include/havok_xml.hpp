@@ -21,6 +21,7 @@
 #include "internal/hka_animationbinding.hpp"
 #include "internal/hka_animationcontainer.hpp"
 #include "internal/hka_annotationtrack.hpp"
+#include "internal/hka_defaultanimrefframe.hpp"
 #include "internal/hka_interleavedanimation.hpp"
 #include "internal/hka_skeleton.hpp"
 #include "internal/hkx_environment.hpp"
@@ -58,9 +59,12 @@ class xmlRootLevelContainer : public hkRootLevelContainerInternalInterface {
 
   size_t Size() const override { return variants.size(); }
   const hkNamedVariant At(size_t id) const override { return variants.at(id); }
-  void AddVariant(IhkVirtualClass *input) {
+  void AddVariant(IhkVirtualClass *input, std::string_view name = {}) {
     auto className = checked_deref_cast<const hkVirtualClass>(input)->className;
-    variants.push_back({className, className, input});
+    if (name.empty()) {
+      name = className;
+    }
+    variants.push_back({name, className, input});
   }
 
 private:
@@ -181,10 +185,11 @@ public:
 class xmlAnnotationTrack : public hkaAnnotationTrackInternalInterface {
   DECLARE_XMLCLASS(xmlAnnotationTrack, hkaAnnotationTrack);
 
-  size_t Size() const override { return 0; }
-  const hkaAnnotationFrame At(size_t) const override { return {}; }
+  size_t Size() const override { return frames.size(); }
+  const hkaAnnotationFrame At(size_t id) const override { return frames.at(id); }
   std::string_view GetName() const override { return name; }
   std::string name;
+  std::vector<hkaAnnotationFrame> frames;
 };
 
 template <class _parent> class xmlAnimation : public virtual _parent {
@@ -196,8 +201,8 @@ template <class _parent> class xmlAnimation : public virtual _parent {
   hkaAnimationType GetAnimationType() const override { return animType; }
   float Duration() const override { return duration; }
   const hkaAnimatedReferenceFrame *GetExtractedMotion() const override {
-    return nullptr;
-  } // TODO
+    return extractedMotion;
+  }
   size_t GetNumAnnotations() const override { return annotations.size(); }
   hkaAnnotationTrackPtr GetAnnotation(size_t id) const override {
     return hkaAnnotationTrackPtr(&annotations[id], false);
@@ -205,6 +210,7 @@ template <class _parent> class xmlAnimation : public virtual _parent {
 
   hkaAnimationType animType;
   float duration;
+  const hkaAnimatedReferenceFrame *extractedMotion = nullptr;
   mutable std::vector<xmlAnnotationTrack> annotations;
 };
 
@@ -222,7 +228,11 @@ public:
   using float_container = std::vector<float>;
   using transform_ptr = uni::Element<transform_container>;
   using float_ptr = uni::Element<float_container>;
-  xmlInterleavedAnimation() { AddHash(GetHash()); }
+  xmlInterleavedAnimation() {
+    AddHash(JenHash("hkaInterleavedSkeletalAnimation"));
+    AddHash(JenHash("hkaInterleavedUncompressedAnimation"));
+    className = "hkaInterleavedAnimation";
+  }
 
   std::vector<transform_ptr> transforms;
   std::vector<float_ptr> floats;
@@ -264,6 +274,38 @@ public:
     const int numTracks = static_cast<int>(floats.size());
     return floats[id % numTracks]->at(id / numTracks);
   }
+};
+
+class xmlDefaultAnimatedReferenceFrame
+    : public hkaDefaultAnimatedReferenceFrameInternalInterface {
+  DECLARE_HKCLASS(xmlDefaultAnimatedReferenceFrame)
+  void SwapEndian() override {}
+  const void *GetPointer() const override { return this; }
+  void Process() override {}
+  void SetDataPointer(void *) override {}
+
+public:
+  xmlDefaultAnimatedReferenceFrame() {
+    AddHash(GetHash());
+    AddHash(JenHash("hkaDefaultAnimatedReferenceFrame"));
+    className = "hkaDefaultAnimatedReferenceFrame";
+  }
+
+  hkaAnimatedReferenceFrameType GetType() const override {
+    return hkaAnimatedReferenceFrameType::DEFAULT;
+  }
+  const Vector4A16 GetUp() const override { return up; }
+  const Vector4A16 GetForward() const override { return forward; }
+  float GetDuration() const override { return duration; }
+  size_t GetNumFrames() const override { return referenceFrames.size(); }
+  const Vector4A16 &GetRefFrame(size_t id) const override {
+    return referenceFrames.at(id);
+  }
+
+  Vector4A16 up;
+  Vector4A16 forward;
+  float duration = 0.f;
+  std::vector<Vector4A16> referenceFrames;
 };
 
 class xmlAnimationBinding : public hkaAnimationBindingInternalInterface {

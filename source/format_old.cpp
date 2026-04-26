@@ -20,6 +20,7 @@
 #include "fixups.hpp"
 #include "format_old.hpp"
 #include "hklib/hka_skeleton.hpp"
+#include "hklib/hk_rootlevelcontainer.hpp"
 #include "internal/hk_internal_api.hpp"
 #include "spike/crypto/jenkinshash.hpp"
 #include "spike/except.hpp"
@@ -32,7 +33,6 @@
 
 #include "spike/io/binreader.hpp"
 #include "spike/io/binwritter.hpp"
-#include "types_embed.hpp"
 
 void hkxHeader::Load(BinReaderRef_e rd) {
   rd.Read<hkxHeaderData>(*this);
@@ -240,6 +240,9 @@ void hkxSectionHeader::Load(BinReaderRef_e rd) {
   rd.ReadContainer(globalFixups, circaNumGlobalFixps);
   rd.Seek(virtualFixupsOffset);
   rd.ReadContainer(virtualFixups, circaNumVirtualFixps);
+  rawLocalFixups = localFixups;
+  rawGlobalFixups = globalFixups;
+  rawVirtualFixups = virtualFixups;
 
   rd.ResetRelativeOrigin();
 }
@@ -360,105 +363,16 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "Cannot save loaded header! Use IhkPackFile::ToPackFile().");
   }
 
-  auto embedded = GetEmbeddedTypes(toolset, layout.littleEndian == 0);
-  bool hasTypes = embedded.data != nullptr;
-  const bool embeddedIsBE = embedded.isBigEndian;
-  const uint8_t *typesBody = nullptr, *typesLf = nullptr, *typesGf = nullptr;
-  const uint8_t *typesVf = nullptr, *typesCn = nullptr;
-  uint32 typesBodySize = 0, typesLfSize = 0, typesGfSize = 0;
-  uint32 typesVfSize = 0, typesCnSize = 0;
-  std::unordered_map<std::string, int32> typesClassOffsets;
   std::unordered_map<std::string, size_t> cnOffsetMap;
-  bool hasSceneBlob = false;
-  const uint8_t *sceneBlobBody = nullptr;
-  uint32 sceneBlobBodySize = 0;
-  uint32 sceneBlobLfCount = 0;
-  const uint8_t *sceneBlobLfData = nullptr;
-  uint32 sceneBlobCnOff = 0;
-
-  if (hasTypes) {
-    memcpy(&typesBodySize, embedded.data, 4);
-    memcpy(&typesLfSize, embedded.data + 4, 4);
-    memcpy(&typesGfSize, embedded.data + 8, 4);
-    memcpy(&typesVfSize, embedded.data + 12, 4);
-    memcpy(&typesCnSize, embedded.data + 16, 4);
-    typesBody = embedded.data + 20;
-    typesLf = typesBody + typesBodySize;
-    typesGf = typesLf + typesLfSize;
-    typesVf = typesGf + typesGfSize;
-    typesCn = typesVf + typesVfSize;
-
-    const uint8_t *afterCn = typesCn + typesCnSize;
-    if (afterCn + 4 <= embedded.data + embedded.size &&
-        memcmp(afterCn, "SCEN", 4) == 0) {
-      hasSceneBlob = true;
-      const uint8_t *p = afterCn + 4;
-      uint32 sceneGfCount, sceneVfCount;
-      memcpy(&sceneBlobBodySize, p, 4); p += 4;
-      memcpy(&sceneBlobLfCount,  p, 4); p += 4;
-      memcpy(&sceneGfCount,      p, 4); p += 4;
-      memcpy(&sceneVfCount,      p, 4); p += 4;
-      sceneBlobBody   = p;
-      sceneBlobLfData = p + sceneBlobBodySize;
-      const uint8_t *vfPtr = sceneBlobLfData + 8 * sceneBlobLfCount;
-      memcpy(&sceneBlobCnOff, vfPtr + 4, 4);
-    }
-
-    size_t cnOff = 0;
-    while (cnOff + 5 < typesCnSize) {
-      size_t nameStart = cnOff + 5;
-      size_t nameEnd = nameStart;
-      while (nameEnd < typesCnSize && typesCn[nameEnd] != 0)
-        nameEnd++;
-      std::string name(reinterpret_cast<const char *>(typesCn + nameStart),
-                       nameEnd - nameStart);
-      cnOffsetMap[name] = nameStart;
-      cnOff = nameEnd + 1;
-    }
-
-    std::unordered_map<uint32, uint32> lfMap;
-    for (size_t i = 0; i + 7 < typesLfSize; i += 8) {
-      int32 src, dst;
-      memcpy(&src, typesLf + i, 4);
-      memcpy(&dst, typesLf + i + 4, 4);
-      if (src >= 0 && dst >= 0)
-        lfMap[src] = dst;
-    }
-
-    for (size_t i = 0; i + 11 < typesVfSize; i += 12) {
-      int32 dataOff, secId, cnOffV;
-      memcpy(&dataOff, typesVf + i, 4);
-      memcpy(&secId, typesVf + i + 4, 4);
-      memcpy(&cnOffV, typesVf + i + 8, 4);
-      if (dataOff < 0 || cnOffV != 5)
-        continue;
-      uint32 namePtrOff = dataOff;
-      auto it = lfMap.find(namePtrOff);
-      if (it != lfMap.end() && it->second < typesBodySize) {
-        const char *nameStr =
-            reinterpret_cast<const char *>(typesBody + it->second);
-        typesClassOffsets[nameStr] = dataOff;
-      }
-    }
-  }
-
-  const int32 dataSectionId = hasTypes ? 2 : 1;
+  const int32 dataSectionId = 1;
 
   wr.SwapEndian((layout.littleEndian != 0) != LittleEndian());
 
   hkxHeaderData hdr = *this;
-  if (hasTypes) {
-    hdr.numSections = 3;
-    hdr.contentsSectionIndex = 2;
-    auto rootIt = cnOffsetMap.find("hkRootLevelContainer");
-    if (rootIt != cnOffsetMap.end())
-      hdr.contentsClassNameSectionOffset =
-          static_cast<int32>(rootIt->second);
-    if (toolset == HK550)
-      hdr.flags = 0xFFFFFFFF;
-    hdr.maxpredicate = -1;
-    hdr.predicateArraySizePlusPadding = -1;
-  }
+  if (toolset == HK550)
+    hdr.flags = 0xFFFFFFFF;
+  hdr.maxpredicate = -1;
+  hdr.predicateArraySizePlusPadding = -1;
   hdr.contentsVersion[sizeof(hdr.contentsVersion) - 1] = char(0xFF);
   wr.Write<hkxHeaderData>(hdr);
 
@@ -474,19 +388,6 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
 
   if (version == 11) {
     wr.Skip(16);
-  }
-
-  hkxSectionHeader typesSection{};
-  if (hasTypes) {
-    std::string_view typesSectionTag = "__types__";
-    memset(typesSection.sectionTag, 0, sizeof(typesSection.sectionTag));
-    typesSection.sectionTag[sizeof(typesSection.sectionTag) - 1] = char(0xFF);
-    memcpy(typesSection.sectionTag, typesSectionTag.data(),
-           typesSectionTag.size() + 1);
-    wr.Write<hkxSectionHeaderData>(typesSection);
-    if (version == 11) {
-      wr.Skip(16);
-    }
   }
 
   hkxSectionHeader mainSection{};
@@ -508,18 +409,14 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   hkFixups fixups;
   std::unordered_map<const IhkVirtualClass *, IhkVirtualClass *> clsRemap;
 
-  if (hasTypes && typesCnSize > 0) {
-    wr.WriteBuffer(reinterpret_cast<const char *>(typesCn), typesCnSize);
-  } else {
-    static const std::string_view reqClassNames[] = {
-        "hkClass", "hkClassMember", "hkClassEnum", "hkClassEnumItem"};
-    for (auto &c : reqClassNames) {
-      wr.Write<uint32>(0);
-      wr.Write('\t');
-      cnOffsetMap[std::string(c)] = wr.Tell();
-      wr.WriteContainer(c);
-      wr.Skip(1);
-    }
+  static const std::string_view reqClassNames[] = {
+      "hkClass", "hkClassMember", "hkClassEnum", "hkClassEnumItem"};
+  for (auto &c : reqClassNames) {
+    wr.Write<uint32>(0);
+    wr.Write('\t');
+    cnOffsetMap[std::string(c)] = wr.Tell();
+    wr.WriteContainer(c);
+    wr.Skip(1);
   }
 
   CRule rule(toolset, layout.reusePaddingOptimization,
@@ -580,6 +477,28 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         fixups.finals.emplace_back(boneOff, c.get());
       }
     }
+
+    if (toolset < HK700) {
+      if (auto root = dynamic_cast<const hkRootLevelContainer *>(c.get())) {
+        for (auto &variant : *root) {
+          if (variant.pointer ||
+              std::string_view(variant.className) != "hkxScene") {
+            continue;
+          }
+
+          if (cnOffsetMap.contains("hkxScene")) {
+            break;
+          }
+
+          wr.Write<uint32>(0);
+          wr.Write('\t');
+          const size_t nameOff = wr.Tell();
+          cnOffsetMap["hkxScene"] = nameOff;
+          wr.WriteT("hkxScene");
+          break;
+        }
+      }
+    }
   }
 
   wr.ResetRelativeOrigin(false);
@@ -592,65 +511,6 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   classSection.localFixupsOffset = classSection.bufferSize;
   classSection.virtualFixupsOffset = classSection.bufferSize;
   wr.ApplyPadding();
-
-  auto swap32Blob = [](const uint8_t *src, uint32 size) {
-    std::vector<uint8_t> buf(src, src + size);
-    for (uint32 i = 0; i + 3 < size; i += 4) {
-      std::swap(buf[i + 0], buf[i + 3]);
-      std::swap(buf[i + 1], buf[i + 2]);
-    }
-    return buf;
-  };
-
-  if (hasTypes) {
-    typesSection.absoluteDataStart = static_cast<uint32>(wr.Tell());
-    wr.SetRelativeOrigin(wr.Tell(), false);
-
-    if (wr.SwappedEndian() && !embeddedIsBE) {
-      auto swapped = swap32Blob(typesBody, typesBodySize);
-      wr.WriteBuffer(reinterpret_cast<const char *>(swapped.data()), typesBodySize);
-    } else {
-      wr.WriteBuffer(reinterpret_cast<const char *>(typesBody), typesBodySize);
-    }
-    wr.ApplyPadding();
-
-    typesSection.localFixupsOffset = static_cast<uint32>(wr.Tell());
-    if (wr.SwappedEndian()) {
-      auto swapped = swap32Blob(typesLf, typesLfSize);
-      wr.WriteBuffer(reinterpret_cast<const char *>(swapped.data()), typesLfSize);
-    } else {
-      wr.WriteBuffer(reinterpret_cast<const char *>(typesLf), typesLfSize);
-    }
-    wr.ApplyPadding();
-
-    typesSection.globalFixupsOffset = static_cast<uint32>(wr.Tell());
-    if (wr.SwappedEndian()) {
-      auto swapped = swap32Blob(typesGf, typesGfSize);
-      wr.WriteBuffer(reinterpret_cast<const char *>(swapped.data()), typesGfSize);
-    } else {
-      wr.WriteBuffer(reinterpret_cast<const char *>(typesGf), typesGfSize);
-    }
-
-    typesSection.virtualFixupsOffset = static_cast<uint32>(wr.Tell());
-    if (wr.SwappedEndian()) {
-      auto swapped = swap32Blob(typesVf, typesVfSize);
-      wr.WriteBuffer(reinterpret_cast<const char *>(swapped.data()), typesVfSize);
-    } else {
-      wr.WriteBuffer(reinterpret_cast<const char *>(typesVf), typesVfSize);
-    }
-
-    const size_t typesPad = GetPadding(wr.Tell(), 16) / 4;
-    for (size_t p = 0; p < typesPad; p++) {
-      wr.Write<int32>(-1);
-    }
-
-    typesSection.bufferSize = static_cast<uint32>(wr.Tell());
-    typesSection.exportsOffset = typesSection.bufferSize;
-    typesSection.importsOffset = typesSection.bufferSize;
-
-    wr.ResetRelativeOrigin(false);
-    wr.ApplyPadding();
-  }
 
   mainSection.absoluteDataStart = static_cast<uint32>(wr.Tell());
   wr.SetRelativeOrigin(wr.Tell(), false);
@@ -670,39 +530,6 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     while (curFixup < fixups.finals.size() &&
            fixups.finals[curFixup].destClass) {
       curFixup++;
-    }
-  }
-
-  size_t sceneOffset = 0;
-  if (hasSceneBlob) {
-    wr.ApplyPadding();
-    sceneOffset = wr.Tell();
-    if (wr.SwappedEndian() && !embeddedIsBE) {
-      auto swapped = swap32Blob(sceneBlobBody, sceneBlobBodySize);
-      wr.WriteBuffer(reinterpret_cast<const char *>(swapped.data()), sceneBlobBodySize);
-    } else {
-      wr.WriteBuffer(reinterpret_cast<const char *>(sceneBlobBody), sceneBlobBodySize);
-    }
-    for (uint32 i = 0; i < sceneBlobLfCount; i++) {
-      uint32 ptrRel, dstRel;
-      memcpy(&ptrRel, sceneBlobLfData + i * 8, 4);
-      memcpy(&dstRel, sceneBlobLfData + i * 8 + 4, 4);
-      hkxSectionHeader::hkxLocalFixup lFix;
-      lFix.pointer     = static_cast<int32>(sceneOffset + ptrRel);
-      lFix.destination = static_cast<int32>(sceneOffset + dstRel);
-      mainSection.localFixups.push_back(lFix);
-    }
-    const auto cnIt = cnOffsetMap.find("hkxScene");
-    fixups.finals.emplace_back(
-        cnIt != cnOffsetMap.end() ? cnIt->second
-                                  : static_cast<size_t>(sceneBlobCnOff),
-        sceneOffset);
-    if (fixups.hasHkxSceneVariant) {
-      hkxSectionHeader::hkxGlobalFixup gFix;
-      gFix.sectionid   = dataSectionId;
-      gFix.pointer     = static_cast<int32>(fixups.hkxScenePtrOff);
-      gFix.destination = static_cast<int32>(sceneOffset);
-      mainSection.globalFixups.push_back(gFix);
     }
   }
 
@@ -740,16 +567,34 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     mainSection.globalFixups.push_back(lFix);
   }
 
-  if (hasTypes) {
-    for (auto &[ptr, name] : fixups.classDescs) {
-      auto it = typesClassOffsets.find(name);
-      if (it != typesClassOffsets.end()) {
-        hkxSectionHeader::hkxGlobalFixup gFix;
-        gFix.sectionid = 1;
-        gFix.pointer = static_cast<int32>(ptr);
-        gFix.destination = it->second;
-        mainSection.globalFixups.push_back(gFix);
-      }
+  if (fixups.legacyScene && !fixups.legacyScene->data.empty()) {
+    wr.ApplyPadding();
+    const size_t sceneOffset = wr.Tell();
+    wr.WriteBuffer(fixups.legacyScene->data.data(),
+                   fixups.legacyScene->data.size());
+
+    for (const auto &lf : fixups.legacyScene->localFixups) {
+      hkxSectionHeader::hkxLocalFixup lFix;
+      lFix.pointer = static_cast<int32>(sceneOffset + lf.pointer);
+      lFix.destination = static_cast<int32>(sceneOffset + lf.destination);
+      mainSection.localFixups.push_back(lFix);
+    }
+
+    auto cnIt = cnOffsetMap.find(fixups.legacyScene->className);
+    if (cnIt != cnOffsetMap.end()) {
+      hkxSectionHeader::hkxVirtualFixup vFix;
+      vFix.sectionid = 0;
+      vFix.classnameoffset = static_cast<int32>(cnIt->second);
+      vFix.dataoffset = static_cast<int32>(sceneOffset);
+      mainSection.virtualFixups.push_back(vFix);
+    }
+
+    if (fixups.legacyScene->variantPtrOff != static_cast<size_t>(-1)) {
+      hkxSectionHeader::hkxGlobalFixup gFix;
+      gFix.sectionid = dataSectionId;
+      gFix.pointer = static_cast<int32>(fixups.legacyScene->variantPtrOff);
+      gFix.destination = static_cast<int32>(sceneOffset);
+      mainSection.globalFixups.push_back(gFix);
     }
   }
 
@@ -786,13 +631,6 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
 
   if (version == 11) {
     wr.Skip(16);
-  }
-
-  if (hasTypes) {
-    wr.Write<hkxSectionHeaderData>(typesSection);
-    if (version == 11) {
-      wr.Skip(16);
-    }
   }
 
   wr.Write<hkxSectionHeaderData>(mainSection);

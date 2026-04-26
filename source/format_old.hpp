@@ -101,6 +101,9 @@ struct hkxSectionHeader : hkxSectionHeaderData {
   std::vector<hkxLocalFixup> localFixups;
   std::vector<hkxGlobalFixup> globalFixups;
   std::vector<hkxVirtualFixup> virtualFixups;
+  std::vector<hkxLocalFixup> rawLocalFixups;
+  std::vector<hkxGlobalFixup> rawGlobalFixups;
+  std::vector<hkxVirtualFixup> rawVirtualFixups;
   IhkPackFile::VirtualClasses virtualClasses;
   hkxHeader *header;
   void Load(BinReaderRef_e rd);

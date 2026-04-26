@@ -17,6 +17,8 @@
 
 #pragma once
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,11 +36,22 @@ struct hkFixup {
   hkFixup(size_t offset) : strOffset(offset) {}
 };
 
+struct hkRawLocalFixup {
+  std::int32_t pointer{0};
+  std::int32_t destination{0};
+};
+
+struct hkLegacySceneBlob {
+  std::string name;
+  std::string className;
+  std::string data;
+  std::vector<hkRawLocalFixup> localFixups;
+  size_t variantPtrOff{static_cast<size_t>(-1)};
+};
+
 struct hkFixups {
   std::vector<hkFixup> locals;
   std::vector<hkFixup> finals;
   std::vector<hkFixup> globals;
-  std::vector<std::pair<size_t, std::string>> classDescs;
-  size_t hkxScenePtrOff{static_cast<size_t>(-1)};
-  bool hasHkxSceneVariant{false};
+  std::optional<hkLegacySceneBlob> legacyScene;
 };

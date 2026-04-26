@@ -17,6 +17,7 @@
 
 #include "internal/hk_rootlevelcontainer.hpp"
 #include "base.hpp"
+#include "format_old.hpp"
 #include "hk_rootlevelcontainer.inl"
 
 struct hkRootLevelContainerSaver {
@@ -58,17 +59,22 @@ struct hkRootLevelContainerSaver {
         wr.WriteBuffer(i.className.data(), i.className.size() + 1);
         if (i.pointer) {
           locals[curFixup + kVariantFixup].destClass = i.pointer;
-        } else {
-          fixups.hkxScenePtrOff = locals[curFixup + kVariantFixup].strOffset;
-          fixups.hasHkxSceneVariant = true;
-          locals[curFixup + kVariantFixup].destination = static_cast<size_t>(-1);
-        }
+        } else if (std::string_view(i.className) == "hkxScene") {
+          if (const auto *sceneBlob = in->GetPreservedSceneBlob(i.name)) {
+            hkLegacySceneBlob blob;
+            blob.name = std::string(i.name);
+            blob.className = std::string(i.className);
+            blob.data = sceneBlob->data;
+            blob.variantPtrOff = locals[curFixup + kVariantFixup].strOffset;
 
-        if (out->LayoutVersion() < HK700) {
-          size_t classDescOff =
-              locals[curFixup + kVariantFixup].strOffset + varType->ptrSize;
-          fixups.classDescs.emplace_back(classDescOff,
-                                         std::string(i.className));
+            for (const auto &lf : sceneBlob->localFixups) {
+              blob.localFixups.push_back({lf.pointer, lf.destination});
+            }
+
+            fixups.legacyScene = std::move(blob);
+          }
+
+          locals[curFixup + kVariantFixup].destination = static_cast<size_t>(-1);
         }
 
         curFixup += vm::_count_;
@@ -81,6 +87,7 @@ struct hkRootLevelContainerMidInterface
     : hkRootLevelContainerInternalInterface {
   clgen::hkRootLevelContainer::Interface interface;
   std::unique_ptr<hkRootLevelContainerSaver> saver;
+  std::optional<hkPreservedSceneBlob> preservedSceneBlob;
 
   hkRootLevelContainerMidInterface(clgen::LayoutLookup rules, char *data)
       : interface {
@@ -94,6 +101,15 @@ struct hkRootLevelContainerMidInterface
 
   const void *GetPointer() const override { return interface.data; }
 
+  const hkPreservedSceneBlob *
+  GetPreservedSceneBlob(std::string_view name) const override {
+    if (preservedSceneBlob && preservedSceneBlob->name == name) {
+      return &*preservedSceneBlob;
+    }
+
+    return nullptr;
+  }
+
   size_t Size() const override { return interface.NumVariants(); }
   const hkNamedVariant At(size_t id) const override {
     auto item = interface.Variants().Next(id);
@@ -104,6 +120,69 @@ struct hkRootLevelContainerMidInterface
 
     return {item.Name(), item.ClassName(),
             header->GetClass(item.Variant().Object())};
+  }
+
+  void Process() override {
+    if (interface.LayoutVersion() >= HK700 || !header) {
+      return;
+    }
+
+    auto oldHeader = dynamic_cast<hkxHeader *>(header);
+    if (!oldHeader) {
+      return;
+    }
+
+    auto *dataSection = oldHeader->GetDataSection();
+    if (!dataSection || dataSection->buffer.empty()) {
+      return;
+    }
+
+    const char *base = dataSection->buffer.data();
+
+    for (size_t i = 0; i < Size(); i++) {
+      auto item = interface.Variants().Next(i);
+      if (std::string_view(item.ClassName()) != "hkxScene") {
+        continue;
+      }
+
+      const char *rawObject = item.Variant().Object();
+      if (!rawObject || header->GetClass(rawObject)) {
+        continue;
+      }
+
+      const size_t start = static_cast<size_t>(rawObject - base);
+      size_t end = dataSection->buffer.size();
+
+      for (const auto &vf : dataSection->rawVirtualFixups) {
+        if (vf.dataoffset > static_cast<int32>(start) &&
+            vf.dataoffset < static_cast<int32>(end)) {
+          end = static_cast<size_t>(vf.dataoffset);
+        }
+      }
+
+      if (start >= end || end > dataSection->buffer.size()) {
+        continue;
+      }
+
+      hkPreservedSceneBlob blob;
+      blob.name = item.Name();
+      blob.className = item.ClassName();
+      blob.data.assign(base + start, base + end);
+
+      for (const auto &lf : dataSection->rawLocalFixups) {
+        if (lf.pointer >= static_cast<int32>(start) &&
+            lf.pointer < static_cast<int32>(end) &&
+            lf.destination >= static_cast<int32>(start) &&
+            lf.destination < static_cast<int32>(end)) {
+          blob.localFixups.push_back(
+              {lf.pointer - static_cast<int32>(start),
+               lf.destination - static_cast<int32>(start)});
+        }
+      }
+
+      preservedSceneBlob = std::move(blob);
+      break;
+    }
   }
 
   void Reflect(const IhkVirtualClass *other) override {
@@ -119,7 +198,8 @@ struct hkRootLevelContainerMidInterface
       if (v.pointer || std::string_view(v.className) == "hkxScene") validCount++;
     }
     interface.NumVariants(validCount);
-    if (interface.m(clgen::hkRootLevelContainer::Members::numVariants) >= 0) {
+    if (interface.LayoutVersion() >= HK700 &&
+        interface.m(clgen::hkRootLevelContainer::Members::numVariants) >= 0) {
       *reinterpret_cast<uint32 *>(interface.data +
                                   interface.m(clgen::hkRootLevelContainer::Members::numVariants) + 4) =
           0x80000000u | static_cast<uint32>(validCount);

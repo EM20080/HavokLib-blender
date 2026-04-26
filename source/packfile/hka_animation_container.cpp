@@ -152,6 +152,10 @@ struct hkaAnimationContainerMidInterface
 
     auto setLockedArrayCapacity = [&](clgen::hkaAnimationContainer::Members member,
                                       uint32 count) {
+      if (interface.LayoutVersion() < HK700) {
+        return;
+      }
+
       int16 off = interface.m(member);
       if (off >= 0) {
         *reinterpret_cast<uint32 *>(interface.data + off + 4) =

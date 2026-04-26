@@ -295,8 +295,29 @@ struct hkaSkeletonMidInterface : hkaSkeletonInternalInterface {
     interface.NumPartitions(saver->in->GetNumPartitions());
     interface.NumLocalFrames(saver->in->GetNumLocalFrames());
 
+    auto hasCapacityField = [&](clgen::hkaSkeleton::Members member) {
+      switch (member) {
+      case clgen::hkaSkeleton::Members::numParentIndices:
+      case clgen::hkaSkeleton::Members::numBones:
+      case clgen::hkaSkeleton::Members::numTransforms:
+      case clgen::hkaSkeleton::Members::numFloatSlots:
+      case clgen::hkaSkeleton::Members::numLocalFrames:
+        return interface.LayoutVersion() >= HK700;
+      case clgen::hkaSkeleton::Members::numReferenceFloats:
+        return interface.LayoutVersion() >= HK2010_1;
+      case clgen::hkaSkeleton::Members::numPartitions:
+        return interface.LayoutVersion() >= HK2012_1;
+      default:
+        return false;
+      }
+    };
+
     auto setLockedArrayCapacity = [&](clgen::hkaSkeleton::Members member,
                                       uint32 count) {
+      if (!hasCapacityField(member)) {
+        return;
+      }
+
       int16 off = interface.m(member);
       if (off >= 0) {
         *reinterpret_cast<uint32 *>(interface.data + off + 4) =

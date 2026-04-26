@@ -1,16 +1,5 @@
 file(GLOB_RECURSE CORE_SOURCE_FILES "*.cpp")
 
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/types_data/hk550_skel_types.bin" _HK550_SKEL_HEX HEX)
-string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _HK550_SKEL_BYTES "${_HK550_SKEL_HEX}")
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/types_data/hk550_skel_types_BE.bin" _HK550_SKEL_BE_HEX HEX)
-string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _HK550_SKEL_BE_BYTES "${_HK550_SKEL_BE_HEX}")
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/types_data/hk2010_skel_types.bin" _HK2010_SKEL_HEX HEX)
-string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _HK2010_SKEL_BYTES "${_HK2010_SKEL_HEX}")
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/types_data/hk2012_skel_types.bin" _HK2012_SKEL_HEX HEX)
-string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _HK2012_SKEL_BYTES "${_HK2012_SKEL_HEX}")
-configure_file(types_embed.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/types_embed.cpp" @ONLY)
-list(APPEND CORE_SOURCE_FILES "${CMAKE_CURRENT_BINARY_DIR}/types_embed.cpp")
-
 add_library(havok-interface INTERFACE)
 target_include_directories(havok-interface INTERFACE ../include)
 target_link_libraries(havok-interface INTERFACE spike-interface)

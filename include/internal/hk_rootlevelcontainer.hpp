@@ -18,11 +18,31 @@
 #pragma once
 #include "hk_internal_api.hpp"
 #include "hklib/hk_rootlevelcontainer.hpp"
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <vector>
+
+struct hkPreservedLocalFixup {
+  std::int32_t pointer{0};
+  std::int32_t destination{0};
+};
+
+struct hkPreservedSceneBlob {
+  std::string name;
+  std::string className;
+  std::string data;
+  std::vector<hkPreservedLocalFixup> localFixups;
+};
 
 struct hkRootLevelContainerInternalInterface : hkRootLevelContainer,
                                                hkVirtualClass {
   operator hkRootLevelContainer const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
   void ToXML(XMLHandle hdl) const override;
+  virtual const hkPreservedSceneBlob *
+  GetPreservedSceneBlob(std::string_view) const {
+    return nullptr;
+  }
   static IhkVirtualClass *Create(CRule rule);
 };

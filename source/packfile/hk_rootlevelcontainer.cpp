@@ -25,7 +25,7 @@
 namespace {
 
 bool SupportsDefaultSceneData(hkToolset version) {
-  return version == HK550 || version == HK2010_1 || version == HK2010_2;
+  return version == HK550;
 }
 
 bool SupportsSyntheticSceneData(hkToolset version) { return version == HK550; }

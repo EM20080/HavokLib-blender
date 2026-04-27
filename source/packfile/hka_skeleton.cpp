@@ -238,13 +238,13 @@ struct hkaSkeletonMidInterface : hkaSkeletonInternalInterface {
   }
 
   void SwapEndian() override {
+    clgen::EndianSwap(interface);
+
     size_t numPI = interface.NumParentIndices();
     size_t numTM = interface.NumTransforms();
     size_t numRF = interface.NumReferenceFloats();
     size_t numParts = interface.NumPartitions();
     size_t numLF = interface.NumLocalFrames();
-
-    clgen::EndianSwap(interface);
 
     if (auto p = interface.ParentIndices()) {
       for (std::span<int16> indices(p, numPI); auto &i : indices) {

@@ -19,10 +19,48 @@
 #include "base.hpp"
 #include "format_old.hpp"
 #include "hk_rootlevelcontainer.inl"
+#include "spike/util/endian.hpp"
+#include <cstring>
+
+namespace {
+
+bool SupportsDefaultSceneData(hkToolset version) {
+  return version == HK550 || version == HK2010_1 || version == HK2010_2;
+}
+
+bool SupportsSyntheticSceneData(hkToolset version) { return version == HK550; }
+
+std::string_view DefaultSceneDataName(hkToolset version) {
+  return version == HK550 ? "Scene Data" : "SceneData";
+}
+
+void StoreFloat(std::string &data, size_t offset, float value,
+                bool swapEndian) {
+  if (swapEndian) {
+    FByteswapper(value);
+  }
+  std::memcpy(data.data() + offset, &value, sizeof(value));
+}
+
+hkLegacySceneBlob MakeSyntheticSceneData(bool swapEndian) {
+  hkLegacySceneBlob blob;
+  blob.name = "SceneData";
+  blob.className = "hkxScene";
+  blob.data.assign(128, '\0');
+
+  StoreFloat(blob.data, 8, 0.0f, swapEndian);
+  StoreFloat(blob.data, 80, 1.0f, swapEndian);
+  StoreFloat(blob.data, 100, 1.0f, swapEndian);
+  StoreFloat(blob.data, 120, 1.0f, swapEndian);
+  return blob;
+}
+
+} // namespace
 
 struct hkRootLevelContainerSaver {
   const hkRootLevelContainerInternalInterface *in;
   const clgen::hkRootLevelContainer::Interface *out;
+  bool addDefaultSceneData{};
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) {
     const size_t sBegin = wr.Tell();
@@ -42,17 +80,26 @@ struct hkRootLevelContainerSaver {
       constexpr size_t kClassNameFixup = 1;
       constexpr size_t kVariantFixup = 2;
 
-      for ([[maybe_unused]] auto &v : *in) {
-        if (!v.pointer && std::string_view(v.className) != "hkxScene") continue;
+      auto reserveVariant = [&] {
         const size_t varBegin = wr.Tell();
         wr.Skip(varType->totalSize);
         locals.emplace_back(varBegin + varType->vtable[vm::name]);
         locals.emplace_back(varBegin + varType->vtable[vm::className]);
         locals.emplace_back(varBegin + varType->vtable[vm::variant]);
+      };
+
+      for ([[maybe_unused]] auto &v : *in) {
+        if (!v.pointer && std::string_view(v.className) != "hkxScene") {
+          continue;
+        }
+        reserveVariant();
       }
 
-      for (auto &i : *in) {
-        if (!i.pointer && std::string_view(i.className) != "hkxScene") continue;
+      if (addDefaultSceneData) {
+        reserveVariant();
+      }
+
+      auto writeVariant = [&](const hkNamedVariant &i) {
         locals[curFixup + kNameFixup].destination = wr.Tell();
         wr.WriteBuffer(i.name.data(), i.name.size() + 1);
         locals[curFixup + kClassNameFixup].destination = wr.Tell();
@@ -72,12 +119,33 @@ struct hkRootLevelContainerSaver {
             }
 
             fixups.legacyScene = std::move(blob);
+          } else if (!fixups.legacyScene &&
+                     SupportsSyntheticSceneData(
+                         static_cast<hkToolset>(out->LayoutVersion()))) {
+            auto blob = MakeSyntheticSceneData(wr.SwappedEndian());
+            blob.name = std::string(i.name);
+            blob.className = std::string(i.className);
+            blob.variantPtrOff = locals[curFixup + kVariantFixup].strOffset;
+            fixups.legacyScene = std::move(blob);
           }
 
           locals[curFixup + kVariantFixup].destination = static_cast<size_t>(-1);
         }
 
         curFixup += vm::_count_;
+      };
+
+      for (auto &i : *in) {
+        if (!i.pointer && std::string_view(i.className) != "hkxScene") {
+          continue;
+        }
+        writeVariant(i);
+      }
+
+      if (addDefaultSceneData) {
+        writeVariant({DefaultSceneDataName(
+                          static_cast<hkToolset>(out->LayoutVersion())),
+                      "hkxScene", nullptr});
       }
     }
   }
@@ -192,10 +260,20 @@ struct hkRootLevelContainerMidInterface
     saver->in = static_cast<const hkRootLevelContainerInternalInterface *>(
         checked_deref_cast<const hkRootLevelContainer>(other));
     saver->out = &interface;
+    bool hasSceneData = false;
     size_t validCount = 0;
     for (size_t i = 0; i < saver->in->Size(); i++) {
       auto v = saver->in->At(i);
+      if (std::string_view(v.className) == "hkxScene") {
+        hasSceneData = true;
+      }
       if (v.pointer || std::string_view(v.className) == "hkxScene") validCount++;
+    }
+    saver->addDefaultSceneData =
+        !hasSceneData &&
+        SupportsDefaultSceneData(static_cast<hkToolset>(interface.LayoutVersion()));
+    if (saver->addDefaultSceneData) {
+      validCount++;
     }
     interface.NumVariants(validCount);
     if (interface.LayoutVersion() >= HK700 &&

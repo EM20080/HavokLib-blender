@@ -183,6 +183,8 @@ void hkxHeader::GenerateToolset() {
       switch (versions[1]) {
       case 1:
         return HK2013;
+      case 2:
+        return HK2013_2;
       }
       return HKUNKVER;
     }

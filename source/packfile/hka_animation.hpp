@@ -20,7 +20,9 @@
 #include "hklib/hka_animatedreferenceframe.hpp"
 #include "internal/hka_animation.hpp"
 #include "internal/hka_annotationtrack.hpp"
+#include "format_old.hpp"
 #include "reflector_util.hpp"
+#include <algorithm>
 #include <map>
 
 #include "hka_animation.inl"
@@ -162,6 +164,30 @@ struct hkaAnimationMidInterface : virtual ParentInterface {
              nullptr;
     };
 
+    auto isVirtualObject = [&](const void *ptr) {
+      auto *oldHeader = dynamic_cast<hkxHeader *>(this->header);
+      if (!oldHeader || !ptr) {
+        return false;
+      }
+
+      const auto *dataSection = oldHeader->GetDataSection();
+      if (!dataSection || dataSection->buffer.empty()) {
+        return false;
+      }
+
+      const char *basePtr = dataSection->buffer.data();
+      const char *itemPtr = static_cast<const char *>(ptr);
+      if (itemPtr < basePtr ||
+          itemPtr >= basePtr + dataSection->buffer.size()) {
+        return false;
+      }
+
+      const auto offset = static_cast<int32>(itemPtr - basePtr);
+      return std::any_of(dataSection->rawVirtualFixups.begin(),
+                         dataSection->rawVirtualFixups.end(),
+                         [&](const auto &vf) { return vf.dataoffset == offset; });
+    };
+
     if (base.LayoutVersion() >= HK700) {
       if (hasData(base.m(clgen::hkaAnimation::Members::annotations))) {
         size_t numParts = base.NumAnnotations();
@@ -179,10 +205,11 @@ struct hkaAnimationMidInterface : virtual ParentInterface {
         auto parts = base.Annotations();
 
         for (size_t i = 0; i < numParts; i++, parts.Next()) {
-          hkaAnnotationTrackMidInterface{**parts}.SwapEndian();
+          auto track = **parts;
+          if (!isVirtualObject(track.data)) {
+            hkaAnnotationTrackMidInterface{track}.SwapEndian();
+          }
         }
-      } else {
-        return;
       }
     }
   }

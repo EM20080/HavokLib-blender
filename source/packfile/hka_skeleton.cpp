@@ -260,6 +260,14 @@ struct hkaSkeletonMidInterface : hkaSkeletonInternalInterface {
       }
     }
 
+    if (interface.LayoutVersion() < HK700) {
+      auto boneItems = interface.Bones();
+      for (size_t i = 0; i < interface.NumBones(); i++, boneItems.Next()) {
+        auto bone = **boneItems;
+        clgen::EndianSwap(bone);
+      }
+    }
+
     if (auto p = interface.ReferenceFloats()) {
       for (std::span<float> refs(p, numRF); auto &i : refs) {
         FByteswapper(i);

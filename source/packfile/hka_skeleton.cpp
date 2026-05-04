@@ -240,6 +240,10 @@ struct hkaSkeletonMidInterface : hkaSkeletonInternalInterface {
   void SwapEndian() override {
     clgen::EndianSwap(interface);
 
+    if (saver) {
+      return;
+    }
+
     size_t numPI = interface.NumParentIndices();
     size_t numTM = interface.NumTransforms();
     size_t numRF = interface.NumReferenceFloats();

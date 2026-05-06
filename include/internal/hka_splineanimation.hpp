@@ -29,6 +29,8 @@ struct hkaSplineCompressedAnimationInternalInterface
   virtual uint32 GetNumFrames() const = 0;
   virtual uint32 GetNumBlocks() const = 0;
   virtual uint32 GetMaxFramesPerBlock() const = 0;
+  virtual uint32 GetMaskAndQuantizationSize() const = 0;
+  virtual uint32 GetNumDataBuffer() const = 0;
   virtual float GetBlockDuration() const = 0;
   virtual float GetBlockInverseDuration() const = 0;
   virtual float GetFrameDuration() const = 0;

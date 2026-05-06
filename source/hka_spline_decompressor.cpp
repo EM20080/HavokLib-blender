@@ -19,6 +19,23 @@
 #include <cmath>
 #include <cstring>
 
+namespace {
+
+uint8 ReadU8(const char *&buffer) {
+  const auto value = *reinterpret_cast<const uint8 *>(buffer);
+  buffer += sizeof(uint8);
+  return value;
+}
+
+uint16 ReadU16(const char *&buffer) {
+  uint16 value = 0;
+  std::memcpy(&value, buffer, sizeof(value));
+  buffer += sizeof(value);
+  return value;
+}
+
+} // namespace
+
 Vector4A16 Read32Quat(const char *&buffer) {
   constexpr uint64 rMask = (1 << 10) - 1;
   constexpr float rFrac = GetFraction(10);
@@ -264,9 +281,8 @@ void TransformSplineBlock::Assign(char *buffer, size_t numTracks,
 
       if (useSpline) {
         auto sTrack = std::make_unique<SplineDynamicTrackVector>();
-        uint16 numItems = *reinterpret_cast<const uint16 *>(buffer++);
-        buffer++;
-        sTrack->degree = *reinterpret_cast<const uint8 *>(buffer++);
+        const uint16 numItems = ReadU16((const char *&)buffer);
+        sTrack->degree = ReadU8((const char *&)buffer);
         const size_t bufferSkip = numItems + sTrack->degree + 2;
         sTrack->knots = {reinterpret_cast<uint8 *>(buffer), bufferSkip};
         buffer += bufferSkip;
@@ -313,12 +329,10 @@ void TransformSplineBlock::Assign(char *buffer, size_t numTracks,
           const auto ttype =
               m.GetSubTrackType(static_cast<TransformType>(type));
           if (ttype == STT_DYNAMIC) {
-            float dVar = static_cast<float>(
-                             *reinterpret_cast<const uint16 *>(buffer++)) *
-                         fractal;
+            const float dVar = static_cast<float>(ReadU16((const char *&)buffer)) *
+                               fractal;
             sTrack->tracks[id][sid] =
                 extremes[id].min + (extremes[id].max - extremes[id].min) * dVar;
-            buffer++;
           }
         };
 
@@ -365,9 +379,8 @@ void TransformSplineBlock::Assign(char *buffer, size_t numTracks,
     if (m.GetSubTrackType(ttRotation) == STT_DYNAMIC) {
       auto rTrack = new SplineDynamicTrackQuat();
       tracks[cTrack].rotation = TransformTrack::TrackType<Vector4A16>(rTrack);
-      uint16 numItems = *reinterpret_cast<const uint16 *>(buffer++);
-      buffer++;
-      rTrack->degree = *reinterpret_cast<const uint8 *>(buffer++);
+      const uint16 numItems = ReadU16((const char *&)buffer);
+      rTrack->degree = ReadU8((const char *&)buffer);
       const size_t bufferSkip = numItems + rTrack->degree + 2;
       rTrack->knots = {reinterpret_cast<uint8 *>(buffer), bufferSkip};
       buffer += bufferSkip;

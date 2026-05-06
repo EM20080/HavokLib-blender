@@ -448,6 +448,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkxMaterialTextureStage", 0xE085BA9F},
           {"hkxTextureFile", 0x0217EF77},
           {"hkaInterleavedSkeletalAnimation", 0x62B02E7B},
+          {"hkaSplineSkeletalAnimation", 0x30A67D2A},
           {"hkaBone", 0xA74011F0},
           {"hkxMesh", 0x72E8E849},
           {"hkxMeshSection", 0x912C8863},
@@ -487,6 +488,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkRootLevelContainer", 0x2772C11E},
           {"hkaAnimationContainer", 0x8DC20333},
           {"hkaInterleavedUncompressedAnimation", 0x930AF031},
+          {"hkaSplineCompressedAnimation", 0x792EE0BB},
           {"hkaDefaultAnimatedReferenceFrame", 0x6D85E445},
           {"hkaAnimationBinding", 0x66EAC971},
           {"hkxScene", 0x5F673DDD},
@@ -532,6 +534,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "hkxMaterialTextureStage",
         "hkxTextureFile",
         "hkaInterleavedSkeletalAnimation",
+        "hkaSplineSkeletalAnimation",
         "hkaBone",
         "hkxMesh",
         "hkxMeshSection",
@@ -621,7 +624,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     if (toolset < HK700) {
       auto hkAnim = safe_deref_cast<const hkaAnimation>(c.get());
 
-      if (hkAnim && hkAnim->GetAnimationType() == HK_INTERLEAVED_ANIMATION) {
+      if (hkAnim && hkAnim->GetNumAnnotations()) {
         size_t trackOff;
         auto trackIt = cnOffsetMap.find("hkaAnnotationTrack");
         if (trackIt != cnOffsetMap.end()) {

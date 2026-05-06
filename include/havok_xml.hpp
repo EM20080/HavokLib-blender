@@ -23,6 +23,8 @@
 #include "internal/hka_annotationtrack.hpp"
 #include "internal/hka_defaultanimrefframe.hpp"
 #include "internal/hka_interleavedanimation.hpp"
+#include "internal/hka_spline_compressor.hpp"
+#include "internal/hka_splineanimation.hpp"
 #include "internal/hka_skeleton.hpp"
 #include "internal/hkx_environment.hpp"
 #include "spike/uni/list_vector.hpp"
@@ -274,6 +276,164 @@ public:
     const int numTracks = static_cast<int>(floats.size());
     return floats[id % numTracks]->at(id / numTracks);
   }
+};
+
+class xmlSplineCompressedAnimation
+    : public xmlAnimation<hkaAnimationInternalInterface>,
+      public hkaSplineCompressedAnimationInternalInterface {
+  DECLARE_HKCLASS(xmlSplineCompressedAnimation)
+  void SwapEndian() override {}
+  const void *GetPointer() const override { return this; };
+  void Process() override {}
+  void SetDataPointer(void *) override {}
+
+public:
+  using transform_container = std::vector<hkQTransform>;
+  using float_container = std::vector<float>;
+
+  xmlSplineCompressedAnimation() {
+    AddHash(JenHash("hkaSplineSkeletalAnimation"));
+    AddHash(JenHash("hkaSplineCompressedAnimation"));
+    className = "hkaSplineCompressedAnimation";
+    animType = HK_SPLINE_COMPRESSED_ANIMATION;
+  }
+
+  std::string_view GetClassName(hkToolset toolset) const override {
+    if (toolset > HK550)
+      return "hkaSplineCompressedAnimation";
+    else
+      return "hkaSplineSkeletalAnimation";
+  }
+
+  bool CompressFromInterleaved(
+      const xmlInterleavedAnimation &source,
+      const hkaSplineCompressionSettings &settings = {},
+      std::string *error = nullptr) {
+    sourceTransforms.clear();
+    sourceFloats.clear();
+
+    const size_t frames = source.transforms.empty()
+                              ? 0
+                              : source.transforms.front()->size();
+    const size_t numTracks = source.transforms.size();
+    sourceTransforms.reserve(frames * numTracks);
+
+    for (size_t frame = 0; frame < frames; frame++) {
+      for (size_t track = 0; track < numTracks; track++) {
+        sourceTransforms.push_back(source.transforms[track]->at(frame));
+      }
+    }
+
+    const size_t numFloatTracks = source.floats.size();
+    sourceFloats.reserve(frames * numFloatTracks);
+    for (size_t frame = 0; frame < frames; frame++) {
+      for (size_t track = 0; track < numFloatTracks; track++) {
+        sourceFloats.push_back(source.floats[track]->at(frame));
+      }
+    }
+
+    hkaSplineCompressionInput input;
+    input.transforms = sourceTransforms.data();
+    input.floats = sourceFloats.empty() ? nullptr : sourceFloats.data();
+    input.numFrames = static_cast<uint32>(frames);
+    input.numTransformTracks = static_cast<uint32>(numTracks);
+    input.numFloatTracks = static_cast<uint32>(numFloatTracks);
+    input.duration = source.Duration();
+    input.settings = settings;
+
+    compressed = {};
+    if (!hkaCompressSplineAnimation(input, compressed, error)) {
+      return false;
+    }
+
+    animType = HK_SPLINE_COMPRESSED_ANIMATION;
+    duration = source.duration;
+    frameRate = source.frameRate;
+    this->numTransformTracks = static_cast<uint32>(numTracks);
+    this->numFloatTracks = static_cast<uint32>(numFloatTracks);
+    extractedMotion = source.extractedMotion;
+    annotations = source.annotations;
+    return true;
+  }
+
+  void SetCompressedData(hkaSplineCompressedData data, uint32 transforms,
+                         uint32 floats, uint32 fps) {
+    compressed = std::move(data);
+    numTransformTracks = transforms;
+    numFloatTracks = floats;
+    frameRate = fps;
+  }
+
+  size_t GetNumOfTransformTracks() const override {
+    return numTransformTracks;
+  }
+
+  size_t GetNumOfFloatTracks() const override { return numFloatTracks; }
+
+  char *GetData() const override {
+    if (compressed.dataBuffer.empty()) {
+      return nullptr;
+    }
+
+    return const_cast<char *>(compressed.dataBuffer.data());
+  }
+
+  std::span<const uint32> GetBlockOffsets() const override {
+    return compressed.blockOffsets;
+  }
+
+  std::span<const uint32> GetFloatBlockOffsets() const override {
+    return compressed.floatBlockOffsets;
+  }
+
+  std::span<const uint32> GetTransformOffsets() const override {
+    return compressed.transformOffsets;
+  }
+
+  std::span<const uint32> GetFloatOffsets() const override {
+    return compressed.floatOffsets;
+  }
+
+  uint32 GetNumFrames() const override { return compressed.numFrames; }
+  uint32 GetNumBlocks() const override { return compressed.numBlocks; }
+  uint32 GetMaxFramesPerBlock() const override {
+    return compressed.maxFramesPerBlock;
+  }
+  uint32 GetMaskAndQuantizationSize() const override {
+    return compressed.maskAndQuantizationSize;
+  }
+  uint32 GetNumDataBuffer() const override {
+    return static_cast<uint32>(compressed.dataBuffer.size());
+  }
+  float GetBlockDuration() const override {
+    return compressed.blockDuration;
+  }
+  float GetBlockInverseDuration() const override {
+    return compressed.blockInverseDuration;
+  }
+  float GetFrameDuration() const override {
+    return compressed.frameDuration;
+  }
+
+  void GetValue(uni::RTSValue &output, float time,
+                size_t trackID) const override {
+    if (sourceTransforms.empty() || !numTransformTracks || !GetNumFrames() ||
+        trackID >= numTransformTracks) {
+      output = {};
+      return;
+    }
+
+    const float frameFull = std::max(0.0f, time * static_cast<float>(frameRate));
+    const size_t frame =
+        std::min<size_t>(static_cast<size_t>(frameFull), GetNumFrames() - 1);
+    output = sourceTransforms[frame * numTransformTracks + trackID];
+  }
+
+  hkaSplineCompressedData compressed;
+  transform_container sourceTransforms;
+  float_container sourceFloats;
+  uint32 numTransformTracks = 0;
+  uint32 numFloatTracks = 0;
 };
 
 class xmlDefaultAnimatedReferenceFrame

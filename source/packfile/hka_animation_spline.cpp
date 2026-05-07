@@ -48,10 +48,6 @@ bool UseLegacy16BytePacking(const clgen::LayoutLookup &lookup, uint8 ptrSize) {
   return ptrSize == 4 && lookup.version >= HK700;
 }
 
-uint32 EncodedSplineAnimationType(uint16 version) {
-  return version >= HK2011_1 ? 3 : HK_SPLINE_COMPRESSED_ANIMATION;
-}
-
 AnnotationTrackData ExtractAnnotationTrack(const hkaAnnotationTrack *track,
                                           clgen::LayoutLookup lookup) {
   AnnotationTrackData result;
@@ -387,7 +383,7 @@ struct hkaSplineCompressedAnimationMidInterface
     saver->out = &interface;
 
     auto anim = interface.BasehkaAnimation();
-    anim.AnimationType(EncodedSplineAnimationType(interface.LayoutVersion()));
+    anim.AnimationType(HK_SPLINE_COMPRESSED_ANIMATION);
     anim.Duration(source->Duration());
     anim.NumOfTransformTracks(
         static_cast<uint32>(source->GetNumOfTransformTracks()));

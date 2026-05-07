@@ -221,7 +221,7 @@ class xmlInterleavedAnimation
       public hkaInterleavedAnimationInternalInterface {
   DECLARE_HKCLASS(xmlInterleavedAnimation)
   void SwapEndian() override {}
-  const void *GetPointer() const override { return sourcePtr ? sourcePtr : this; };
+  const void *GetPointer() const override { return this; };
   void Process() override {}
   void SetDataPointer(void *) override {}
 
@@ -230,7 +230,6 @@ public:
   using float_container = std::vector<float>;
   using transform_ptr = uni::Element<transform_container>;
   using float_ptr = uni::Element<float_container>;
-  const void *sourcePtr = nullptr;
   xmlInterleavedAnimation() {
     AddHash(JenHash("hkaInterleavedSkeletalAnimation"));
     AddHash(JenHash("hkaInterleavedUncompressedAnimation"));

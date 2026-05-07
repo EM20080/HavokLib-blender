@@ -499,21 +499,6 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           return sig.second;
         }
       }
-    } else if (toolset == HK2012_1 || toolset == HK2012_2) {
-      static const std::pair<std::string_view, uint32> signatures[] = {
-          {"hkClass", 0x33D42383}, {"hkClassMember", 0xB0EFA719},
-          {"hkClassEnum", 0x8A3609CF}, {"hkClassEnumItem", 0xCE6F8A6C},
-          {"hkRootLevelContainer", 0x2772C11E}, {"hkxScene", 0x3637A8EC},
-          {"hkMemoryResourceContainer", 0x4762F92A},
-          {"hkaAnimationContainer", 0x8DC20333},
-          {"hkaInterleavedUncompressedAnimation", 0x79A6E0E0},
-          {"hkaSplineCompressedAnimation", 0xA57D6A61},
-          {"hkaAnimationBinding", 0xA808529F}};
-      for (auto &sig : signatures) {
-        if (sig.first == name) {
-          return sig.second;
-        }
-      }
     }
 
     return JenHash(name).raw();
@@ -656,12 +641,19 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
       }
     }
 
-    if (auto root = dynamic_cast<const hkRootLevelContainer *>(c.get())) {
-      for (auto &variant : *root) {
-        if (!variant.pointer && std::string_view(variant.className) == "hkxScene") {
-          if (!cnOffsetMap.contains("hkxScene")) {
-            writeClassName("hkxScene");
+    if (toolset < HK700) {
+      if (auto root = dynamic_cast<const hkRootLevelContainer *>(c.get())) {
+        for (auto &variant : *root) {
+          if (variant.pointer ||
+              std::string_view(variant.className) != "hkxScene") {
+            continue;
           }
+
+          if (cnOffsetMap.contains("hkxScene")) {
+            break;
+          }
+
+          writeClassName("hkxScene");
           break;
         }
       }
@@ -693,29 +685,6 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
 
   size_t curFixup = 0;
   std::unordered_map<IhkVirtualClass *, size_t> savedClasses;
-  auto flushLegacyScene = [&] {
-    auto &scene = fixups.legacyScene;
-    if (!scene || scene->data.empty()) {
-      return;
-    }
-    wr.ApplyPadding();
-    const size_t off = wr.Tell();
-    wr.WriteBuffer(scene->data.data(), scene->data.size());
-    for (auto &lf : scene->localFixups) {
-      mainSection.localFixups.push_back({static_cast<int32>(off + lf.pointer),
-                                         static_cast<int32>(off + lf.destination)});
-    }
-    if (auto cn = cnOffsetMap.find(scene->className); cn != cnOffsetMap.end()) {
-      mainSection.virtualFixups.push_back(
-          {static_cast<int32>(off), 0, static_cast<int32>(cn->second)});
-    }
-    if (scene->variantPtrOff != static_cast<size_t>(-1)) {
-      mainSection.globalFixups.push_back(
-          {static_cast<int32>(scene->variantPtrOff), dataSectionId,
-           static_cast<int32>(off)});
-    }
-    scene.reset();
-  };
 
   for (auto &c : refClasses) {
     wr.ApplyPadding();
@@ -725,7 +694,6 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
 
     auto cls = checked_deref_cast<const hkVirtualClass>(c.get());
     cls->Save(wr, fixups);
-    flushLegacyScene();
 
     while (curFixup < fixups.finals.size() &&
            fixups.finals[curFixup].destClass) {
@@ -767,7 +735,36 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     mainSection.globalFixups.push_back(lFix);
   }
 
-  flushLegacyScene();
+  if (fixups.legacyScene && !fixups.legacyScene->data.empty()) {
+    wr.ApplyPadding();
+    const size_t sceneOffset = wr.Tell();
+    wr.WriteBuffer(fixups.legacyScene->data.data(),
+                   fixups.legacyScene->data.size());
+
+    for (const auto &lf : fixups.legacyScene->localFixups) {
+      hkxSectionHeader::hkxLocalFixup lFix;
+      lFix.pointer = static_cast<int32>(sceneOffset + lf.pointer);
+      lFix.destination = static_cast<int32>(sceneOffset + lf.destination);
+      mainSection.localFixups.push_back(lFix);
+    }
+
+    auto cnIt = cnOffsetMap.find(fixups.legacyScene->className);
+    if (cnIt != cnOffsetMap.end()) {
+      hkxSectionHeader::hkxVirtualFixup vFix;
+      vFix.sectionid = 0;
+      vFix.classnameoffset = static_cast<int32>(cnIt->second);
+      vFix.dataoffset = static_cast<int32>(sceneOffset);
+      mainSection.virtualFixups.push_back(vFix);
+    }
+
+    if (fixups.legacyScene->variantPtrOff != static_cast<size_t>(-1)) {
+      hkxSectionHeader::hkxGlobalFixup gFix;
+      gFix.sectionid = dataSectionId;
+      gFix.pointer = static_cast<int32>(fixups.legacyScene->variantPtrOff);
+      gFix.destination = static_cast<int32>(sceneOffset);
+      mainSection.globalFixups.push_back(gFix);
+    }
+  }
 
   wr.ApplyPadding();
   mainSection.localFixupsOffset = static_cast<int32>(wr.Tell());

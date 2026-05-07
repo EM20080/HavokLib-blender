@@ -102,10 +102,8 @@ struct hkRootLevelContainerSaver {
       auto writeVariant = [&](const hkNamedVariant &i) {
         locals[curFixup + kNameFixup].destination = wr.Tell();
         wr.WriteBuffer(i.name.data(), i.name.size() + 1);
-        wr.ApplyPadding();
         locals[curFixup + kClassNameFixup].destination = wr.Tell();
         wr.WriteBuffer(i.className.data(), i.className.size() + 1);
-        wr.ApplyPadding();
         if (i.pointer) {
           locals[curFixup + kVariantFixup].destClass = i.pointer;
         } else if (std::string_view(i.className) == "hkxScene") {
@@ -183,20 +181,17 @@ struct hkRootLevelContainerMidInterface
   size_t Size() const override { return interface.NumVariants(); }
   const hkNamedVariant At(size_t id) const override {
     auto item = interface.Variants().Next(id);
-    std::string_view name = item.Name() ? item.Name() : "";
-    std::string_view className = item.ClassName() ? item.ClassName() : "";
-    if (className.empty() && preservedSceneBlob && preservedSceneBlob->name == name) {
-      className = preservedSceneBlob->className;
-    }
     if (interface.LayoutVersion() >= HK700) {
-      return {name, className, header->GetClass(item.VariantHK700())};
+      return {item.Name(), item.ClassName(),
+              header->GetClass(item.VariantHK700())};
     }
 
-    return {name, className, header->GetClass(item.Variant().Object())};
+    return {item.Name(), item.ClassName(),
+            header->GetClass(item.Variant().Object())};
   }
 
   void Process() override {
-    if (!header) {
+    if (interface.LayoutVersion() >= HK700 || !header) {
       return;
     }
 
@@ -214,27 +209,16 @@ struct hkRootLevelContainerMidInterface
 
     for (size_t i = 0; i < Size(); i++) {
       auto item = interface.Variants().Next(i);
-      const char *rawObject = interface.LayoutVersion() >= HK700
-                                  ? item.VariantHK700()
-                                  : item.Variant().Object();
+      if (std::string_view(item.ClassName()) != "hkxScene") {
+        continue;
+      }
+
+      const char *rawObject = item.Variant().Object();
       if (!rawObject || header->GetClass(rawObject)) {
         continue;
       }
 
       const size_t start = static_cast<size_t>(rawObject - base);
-      std::string_view className = item.ClassName() ? item.ClassName() : "";
-      if (className.empty()) {
-        for (const auto &vf : dataSection->rawVirtualFixups) {
-          if (vf.dataoffset == static_cast<int32>(start)) {
-            className = oldHeader->sections[vf.sectionid].buffer.data() +
-                        vf.classnameoffset;
-            break;
-          }
-        }
-      }
-      if (className != "hkxScene") {
-        continue;
-      }
       size_t end = dataSection->buffer.size();
 
       for (const auto &vf : dataSection->rawVirtualFixups) {
@@ -249,8 +233,8 @@ struct hkRootLevelContainerMidInterface
       }
 
       hkPreservedSceneBlob blob;
-      blob.name = item.Name() ? item.Name() : "";
-      blob.className = className;
+      blob.name = item.Name();
+      blob.className = item.ClassName();
       blob.data.assign(base + start, base + end);
 
       for (const auto &lf : dataSection->rawLocalFixups) {

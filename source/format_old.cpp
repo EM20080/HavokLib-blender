@@ -670,9 +670,9 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   }
 
   wr.ResetRelativeOrigin(false);
-  while (wr.Tell() & 0xf) {
-    wr.Write(uint8(0xff));
-  }
+  do {
+    wr.Write(0xffffffffu);
+  } while (wr.Tell() & 0xf);
   classSection.bufferSize =
       static_cast<uint32>(wr.Tell() - classSection.absoluteDataStart);
   classSection.exportsOffset = classSection.bufferSize;

@@ -508,6 +508,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkaAnimationContainer", 0x8DC20333},
           {"hkaInterleavedUncompressedAnimation", 0x79A6E0E0},
           {"hkaSplineCompressedAnimation", 0xA57D6A61},
+          {"hkaDefaultAnimatedReferenceFrame", 0xB287B5E8},
           {"hkaAnimationBinding", 0xA808529F}};
       for (auto &sig : signatures) {
         if (sig.first == name) {
@@ -669,7 +670,9 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   }
 
   wr.ResetRelativeOrigin(false);
-  wr.ApplyPadding();
+  do {
+    wr.Write(0xffffffffu);
+  } while (wr.Tell() & 0xf);
   classSection.bufferSize =
       static_cast<uint32>(wr.Tell() - classSection.absoluteDataStart);
   classSection.exportsOffset = classSection.bufferSize;

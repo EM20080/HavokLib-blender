@@ -50,10 +50,12 @@ struct hkaAnimationBindingSaver {
 
     if (out->m(mm::skeletonName) >= 0) {
       auto skeletonName = in->GetSkeletonName();
-      wr.ApplyPadding();
-      locals.emplace_back(sBegin + out->m(mm::skeletonName), wr.Tell());
-      wr.WriteBuffer(skeletonName.data(), skeletonName.size());
-      wr.Skip(1);
+      if (!skeletonName.empty()) {
+        wr.ApplyPadding();
+        locals.emplace_back(sBegin + out->m(mm::skeletonName), wr.Tell());
+        wr.WriteBuffer(skeletonName.data(), skeletonName.size());
+        wr.Skip(1);
+      }
     }
 
     if (const auto numTracks = in->GetNumTransformTrackToBoneIndices();
@@ -135,7 +137,8 @@ struct hkaAnimationBindingMidInterface : hkaAnimationBindingInternalInterface {
   }
 
   std::string_view GetSkeletonName() const override {
-    return interface.SkeletonName();
+    const char *name = interface.SkeletonName();
+    return name ? std::string_view{name} : std::string_view{};
   }
 
   const hkaAnimation *GetAnimation() const override {

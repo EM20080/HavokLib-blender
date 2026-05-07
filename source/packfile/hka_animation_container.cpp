@@ -36,6 +36,7 @@ struct hkaAnimationContainerSaver {
     using mm = clgen::hkaAnimationContainer::Members;
 
     wr.WriteBuffer(out->data, lay.totalSize);
+    auto arrayPad = [&] { out->LayoutVersion() >= HK700 ? wr.ApplyPadding() : wr.ApplyPadding(8); };
 
     if (in->GetNumSkeletons()) {
       wr.ApplyPadding();
@@ -48,7 +49,7 @@ struct hkaAnimationContainerSaver {
     }
 
     if (in->GetNumAnimations()) {
-      wr.ApplyPadding(8);
+      arrayPad();
       locals.emplace_back(sBegin + out->m(mm::animations), wr.Tell());
 
       for (auto s : in->Animations()) {
@@ -58,7 +59,7 @@ struct hkaAnimationContainerSaver {
     }
 
     if (in->GetNumBindings()) {
-      wr.ApplyPadding(8);
+      arrayPad();
       locals.emplace_back(sBegin + out->m(mm::bindings), wr.Tell());
 
       for (auto s : in->Bindings()) {
@@ -68,7 +69,7 @@ struct hkaAnimationContainerSaver {
     }
 
     if (in->GetNumAttachments()) {
-      wr.ApplyPadding(8);
+      arrayPad();
       locals.emplace_back(sBegin + out->m(mm::attachments), wr.Tell());
 
       for (auto s : in->Attachments()) {
@@ -78,7 +79,7 @@ struct hkaAnimationContainerSaver {
     }
 
     if (in->GetNumSkins()) {
-      wr.ApplyPadding(8);
+      arrayPad();
       locals.emplace_back(sBegin + out->m(mm::skins), wr.Tell());
 
       for (auto s : in->MeshBinds()) {

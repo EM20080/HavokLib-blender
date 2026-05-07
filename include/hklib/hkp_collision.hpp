@@ -27,6 +27,11 @@ struct hkpMoppCode;
 struct hkpStorageExtendedMeshShapeMeshSubpartStorage;
 struct hkpStorageExtendedMeshShapeShapeSubpartStorage;
 
+struct hkpRigidBodyProperty {
+  uint32 key{};
+  uint64 data{};
+};
+
 struct hkpPhysicsData : IhkVirtualClass {
   DECLARE_HKCLASS(hkpPhysicsData)
 
@@ -63,6 +68,15 @@ struct hkpRigidBody : IhkVirtualClass {
   DECLARE_HKCLASS(hkpRigidBody)
 
   virtual std::string_view GetName() const = 0;
+  virtual uint32 GetShapeKey() const = 0;
+  virtual uint32 GetCollisionFilterInfo() const = 0;
+  virtual uint8 GetObjectQualityType() const = 0;
+  virtual uint8 GetMotionType() const = 0;
+  virtual uint8 GetMaterialResponseType() const = 0;
+  virtual float GetMaterialFriction() const = 0;
+  virtual float GetMaterialRestitution() const = 0;
+  virtual size_t GetNumProperties() const = 0;
+  virtual hkpRigidBodyProperty GetProperty(size_t id) const = 0;
   virtual es::Matrix44 GetTransform() const = 0;
   virtual const hkpShape *GetShape() const = 0;
 };
@@ -128,6 +142,9 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorage : IhkVirtualClass {
   virtual const uint16 *GetIndices16() const = 0;
   virtual size_t GetNumIndices32() const = 0;
   virtual const uint32 *GetIndices32() const = 0;
+  virtual size_t GetNumTriangles() const = 0;
+  virtual bool GetTriangleIndices(size_t id, uint32 &a, uint32 &b,
+                                  uint32 &c) const = 0;
 };
 
 struct hkpStorageExtendedMeshShapeShapeSubpartStorage : IhkVirtualClass {
@@ -173,6 +190,7 @@ struct hkpConvexTranslateShape : hkpShape {
 
 struct hkpBoxShape : hkpShape {
   DECLARE_HKCLASS(hkpBoxShape)
+  virtual float GetRadius() const = 0;
   virtual Vector4A16 GetHalfExtents() const = 0;
 };
 
@@ -187,6 +205,11 @@ struct hkpCylinderShape : hkpShape {
 struct hkpConvexVerticesShape : hkpShape {
   DECLARE_HKCLASS(hkpConvexVerticesShape)
 
+  virtual float GetRadius() const = 0;
+  virtual Vector4A16 GetAabbHalfExtents() const = 0;
+  virtual Vector4A16 GetAabbCenter() const = 0;
   virtual size_t GetNumVertices() const = 0;
   virtual bool GetVertex(size_t id, Vector4A16 &out) const = 0;
+  virtual size_t GetNumPlaneEquations() const = 0;
+  virtual const Vector4A16 *GetPlaneEquations() const = 0;
 };

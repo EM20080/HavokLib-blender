@@ -94,6 +94,17 @@ uint32 ByteSwap32(uint32 value) {
          ((value & 0x00FF0000u) >> 8) | ((value & 0xFF000000u) >> 24);
 }
 
+uint64 ByteSwap64(uint64 value) {
+  return ((value & 0x00000000000000FFull) << 56) |
+         ((value & 0x000000000000FF00ull) << 40) |
+         ((value & 0x0000000000FF0000ull) << 24) |
+         ((value & 0x00000000FF000000ull) << 8) |
+         ((value & 0x000000FF00000000ull) >> 8) |
+         ((value & 0x0000FF0000000000ull) >> 24) |
+         ((value & 0x00FF000000000000ull) >> 40) |
+         ((value & 0xFF00000000000000ull) >> 56);
+}
+
 float ByteSwapFloat(float value) {
   uint32 bits = 0;
   std::memcpy(&bits, &value, sizeof(bits));
@@ -135,6 +146,8 @@ template <class C> C ReadValue(const char *data, size_t offset,
       value = ByteSwap16(value);
     } else if constexpr (std::is_same_v<C, uint32>) {
       value = ByteSwap32(value);
+    } else if constexpr (std::is_same_v<C, uint64>) {
+      value = ByteSwap64(value);
     } else if constexpr (std::is_same_v<C, int32>) {
       value = static_cast<int32>(ByteSwap32(static_cast<uint32>(value)));
     } else if constexpr (std::is_same_v<C, float>) {
@@ -172,6 +185,19 @@ struct ArrayViewWithMode {
   bool x64{};
   bool swapEndian{};
 };
+
+size_t PointerSize(bool x64) { return x64 ? 8u : 4u; }
+
+size_t ArrayStorageSize(bool x64) { return PointerSize(x64) + 8u; }
+
+size_t AlignOffset(size_t value, size_t alignment) {
+  if (alignment == 0) {
+    return value;
+  }
+
+  const size_t mask = alignment - 1;
+  return (value + mask) & ~mask;
+}
 
 bool IsArrayViewInHeader(const ArrayViewWithMode &view, size_t elementSize,
                          const IhkPackFile *header) {
@@ -243,12 +269,41 @@ const void *ReadPointerArrayItem(const ArrayView &arr, size_t id, bool x64) {
 
 bool IsModernCollision(hkToolset version) { return version >= HK2010_1; }
 
+size_t RigidBodyCollidableOffset() { return 16; }
+
 size_t RigidBodyNameOffset(hkToolset version) {
   return IsModernCollision(version) ? 120 : 112;
 }
 
+size_t RigidBodyPropertiesOffset(hkToolset version, bool x64) {
+  return RigidBodyNameOffset(version) + PointerSize(x64);
+}
+
+size_t RigidBodyMaterialOffset(hkToolset version, bool x64) {
+  return RigidBodyPropertiesOffset(version, x64) + ArrayStorageSize(x64);
+}
+
 size_t RigidBodyMotionOffset(hkToolset version) {
   return IsModernCollision(version) ? 224 : 208;
+}
+
+size_t CdBodySize(bool x64) { return x64 ? 32u : 16u; }
+
+size_t BroadPhaseHandleOffset(bool x64) {
+  return RigidBodyCollidableOffset() + CdBodySize(x64) + 4u;
+}
+
+size_t ConvexRadiusOffset() { return 16; }
+
+size_t ConvexVerticesArrayOffset() { return 64; }
+
+size_t ConvexVerticesNumVerticesOffset(bool x64) {
+  return ConvexVerticesArrayOffset() + ArrayStorageSize(x64);
+}
+
+size_t ConvexVerticesPlaneEquationsOffset(bool x64) {
+  return AlignOffset(ConvexVerticesNumVerticesOffset(x64) + sizeof(int32),
+                     PointerSize(x64));
 }
 
 size_t MoppCodePointerOffset(hkToolset version) {
@@ -374,6 +429,19 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   using Base = hkpMidBase<hkpRigidBodyInternalInterface>;
   using Base::Base;
 
+  static constexpr uint32 kMaxProperties = 1 << 16;
+
+  ArrayViewWithMode GetPropertiesArray() const {
+    ArrayViewWithMode properties = ReadArrayWithFallback(
+        data, RigidBodyPropertiesOffset(this->rule.version, this->rule.x64),
+        this->rule.x64, this->IsBigEndianData(), kMaxProperties);
+    if (!IsArrayViewInHeader(properties, sizeof(hkpRigidBodyProperty),
+                             this->header)) {
+      return {};
+    }
+    return properties;
+  }
+
   std::string_view GetName() const override {
     const char *name =
         ReadPointer<char>(data, RigidBodyNameOffset(this->rule.version), this->rule.x64);
@@ -382,6 +450,59 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     }
 
     return name;
+  }
+
+  uint32 GetShapeKey() const override {
+    const size_t offset = RigidBodyCollidableOffset() + PointerSize(this->rule.x64);
+    return ReadValue<uint32>(data, offset, this->IsBigEndianData());
+  }
+
+  uint32 GetCollisionFilterInfo() const override {
+    const size_t offset = BroadPhaseHandleOffset(this->rule.x64) + 8;
+    return ReadValue<uint32>(data, offset, this->IsBigEndianData());
+  }
+
+  uint8 GetObjectQualityType() const override {
+    return ReadValue<uint8>(data, BroadPhaseHandleOffset(this->rule.x64) + 6);
+  }
+
+  uint8 GetMotionType() const override {
+    const size_t motionOffset = RigidBodyMotionOffset(this->rule.version);
+    return ReadValue<uint8>(data, motionOffset + 8);
+  }
+
+  uint8 GetMaterialResponseType() const override {
+    return ReadValue<uint8>(
+        data, RigidBodyMaterialOffset(this->rule.version, this->rule.x64));
+  }
+
+  float GetMaterialFriction() const override {
+    return ReadValue<float>(
+        data, RigidBodyMaterialOffset(this->rule.version, this->rule.x64) + 4,
+        this->IsBigEndianData());
+  }
+
+  float GetMaterialRestitution() const override {
+    return ReadValue<float>(
+        data, RigidBodyMaterialOffset(this->rule.version, this->rule.x64) + 8,
+        this->IsBigEndianData());
+  }
+
+  size_t GetNumProperties() const override {
+    return GetPropertiesArray().view.count;
+  }
+
+  hkpRigidBodyProperty GetProperty(size_t id) const override {
+    const ArrayViewWithMode properties = GetPropertiesArray();
+    if (!properties.view.data || id >= properties.view.count) {
+      return {};
+    }
+
+    const char *propertyData = properties.view.data + id * sizeof(hkpRigidBodyProperty);
+    hkpRigidBodyProperty property;
+    property.key = ReadValue<uint32>(propertyData, 0, properties.swapEndian);
+    property.data = ReadValue<uint64>(propertyData, 8, properties.swapEndian);
+    return property;
   }
 
   es::Matrix44 GetTransform() const override {
@@ -680,6 +801,60 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
 
     return cachedIndices32.data();
   }
+
+  size_t GetNumTriangles() const override {
+    const size_t numIndices32 = GetNumIndices32();
+    if (numIndices32 >= 4) {
+      return numIndices32 / 4;
+    }
+
+    const size_t numIndices16 = GetNumIndices16();
+    if (numIndices16 >= 4) {
+      return numIndices16 / 4;
+    }
+
+    const size_t numIndices8 = GetNumIndices8();
+    if (numIndices8 >= 4) {
+      return numIndices8 / 4;
+    }
+
+    return 0;
+  }
+
+  bool GetTriangleIndices(size_t id, uint32 &a, uint32 &b,
+                          uint32 &c) const override {
+    const uint32 *indices32 = GetIndices32();
+    const size_t numIndices32 = GetNumIndices32();
+    if (indices32 && id < numIndices32 / 4) {
+      const size_t base = id * 4;
+      a = indices32[base + 0];
+      b = indices32[base + 1];
+      c = indices32[base + 2];
+      return true;
+    }
+
+    const uint16 *indices16 = GetIndices16();
+    const size_t numIndices16 = GetNumIndices16();
+    if (indices16 && id < numIndices16 / 4) {
+      const size_t base = id * 4;
+      a = indices16[base + 0];
+      b = indices16[base + 1];
+      c = indices16[base + 2];
+      return true;
+    }
+
+    const uint8 *indices8 = GetIndices8();
+    const size_t numIndices8 = GetNumIndices8();
+    if (indices8 && id < numIndices8 / 4) {
+      const size_t base = id * 4;
+      a = indices8[base + 0];
+      b = indices8[base + 1];
+      c = indices8[base + 2];
+      return true;
+    }
+
+    return false;
+  }
 };
 
 struct hkpStorageExtendedMeshShapeShapeSubpartStorageMidInterface
@@ -822,6 +997,9 @@ struct hkpBoxShapeMidInterface : hkpMidBase<hkpBoxShapeInternalInterface> {
   uint32 GetShapeType() const override {
     return ReadValue<uint32>(data, 12, this->IsBigEndianData());
   }
+  float GetRadius() const override {
+    return ReadValue<float>(data, ConvexRadiusOffset(), this->IsBigEndianData());
+  }
   Vector4A16 GetHalfExtents() const override {
     return ReadValue<Vector4A16>(data, 32, this->IsBigEndianData());
   }
@@ -857,22 +1035,53 @@ struct hkpConvexVerticesShapeMidInterface
   };
 
   static constexpr uint32 kMaxPackedVertices = 1 << 20;
+  static constexpr uint32 kMaxPlaneEquations = 1 << 20;
+  mutable const Vector4A16 *cachedPlaneSource = nullptr;
+  mutable std::vector<Vector4A16> cachedPlanes;
 
   ArrayViewWithMode GetPackedVertices() const {
     ArrayViewWithMode packed = ReadArrayWithFallback(
-        data, 64, this->rule.x64, this->IsBigEndianData(), kMaxPackedVertices);
+        data, ConvexVerticesArrayOffset(), this->rule.x64,
+        this->IsBigEndianData(), kMaxPackedVertices);
     if (!IsArrayViewInHeader(packed, sizeof(FourVectors), this->header)) {
       return {};
     }
     return packed;
   }
 
+  ArrayViewWithMode GetPlaneEquationsArray() const {
+    const ArrayViewWithMode packedVertices = GetPackedVertices();
+    const bool x64 = packedVertices.view.data ? packedVertices.x64 : this->rule.x64;
+    ArrayViewWithMode planes = ReadArrayWithFallback(
+        data, ConvexVerticesPlaneEquationsOffset(x64), x64,
+        this->IsBigEndianData(), kMaxPlaneEquations);
+    if (!IsArrayViewInHeader(planes, sizeof(Vector4A16), this->header)) {
+      return {};
+    }
+    return planes;
+  }
+
   uint32 GetShapeType() const override {
     return ReadValue<uint32>(data, 12, this->IsBigEndianData());
   }
 
+  float GetRadius() const override {
+    return ReadValue<float>(data, ConvexRadiusOffset(), this->IsBigEndianData());
+  }
+
+  Vector4A16 GetAabbHalfExtents() const override {
+    return ReadValue<Vector4A16>(data, 32, this->IsBigEndianData());
+  }
+
+  Vector4A16 GetAabbCenter() const override {
+    return ReadValue<Vector4A16>(data, 48, this->IsBigEndianData());
+  }
+
   size_t GetNumVertices() const override {
-    const int32 count = ReadValue<int32>(data, 76, this->IsBigEndianData());
+    const ArrayViewWithMode values = GetPackedVertices();
+    const bool x64 = values.view.data ? values.x64 : this->rule.x64;
+    const int32 count = ReadValue<int32>(
+        data, ConvexVerticesNumVerticesOffset(x64), this->IsBigEndianData());
     if (count <= 0) {
       return 0;
     }
@@ -909,6 +1118,30 @@ struct hkpConvexVerticesShapeMidInterface
 
     out = Vector4A16(x, y, z, 1.0f);
     return true;
+  }
+
+  size_t GetNumPlaneEquations() const override {
+    return GetPlaneEquationsArray().view.count;
+  }
+
+  const Vector4A16 *GetPlaneEquations() const override {
+    const ArrayViewWithMode planes = GetPlaneEquationsArray();
+    const auto *rawPlanes = reinterpret_cast<const Vector4A16 *>(planes.view.data);
+    if (!rawPlanes || planes.view.count == 0 || !planes.swapEndian) {
+      return rawPlanes;
+    }
+
+    if (cachedPlaneSource != rawPlanes ||
+        cachedPlanes.size() != planes.view.count) {
+      cachedPlaneSource = rawPlanes;
+      cachedPlanes.assign(rawPlanes, rawPlanes + planes.view.count);
+
+      for (auto &value : cachedPlanes) {
+        value = ByteSwapVector4(value);
+      }
+    }
+
+    return cachedPlanes.data();
   }
 };
 

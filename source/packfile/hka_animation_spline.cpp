@@ -161,8 +161,12 @@ struct hkaSplineCompressedAnimationSaver {
     auto &lay = *out->layout;
     using mm = clgen::hkaSplineCompressedAnimation::Members;
     using am = clgen::hkaAnimation::Members;
+    const bool is2012_2 = lay.ptrSize == 4 && out->lookup.version == HK2012_2;
 
     wr.WriteBuffer(out->data, lay.totalSize);
+    if (is2012_2) {
+      wr.Skip(16);
+    }
     const auto anim = out->BasehkaAnimation();
 
     if (const auto *extractedMotion = in->GetExtractedMotion();
@@ -180,7 +184,7 @@ struct hkaSplineCompressedAnimationSaver {
         tracks.push_back(ExtractAnnotationTrack(track.get(), out->lookup));
       }
 
-      if (UseLegacy16BytePacking(out->lookup, lay.ptrSize)) {
+      if (UseLegacy16BytePacking(out->lookup, lay.ptrSize) && !is2012_2) {
         wr.ApplyPadding(32);
       } else {
         wr.ApplyPadding();
@@ -383,7 +387,9 @@ struct hkaSplineCompressedAnimationMidInterface
     saver->out = &interface;
 
     auto anim = interface.BasehkaAnimation();
-    anim.AnimationType(HK_SPLINE_COMPRESSED_ANIMATION);
+    anim.AnimationType(interface.LayoutVersion() >= HK2011_1
+                           ? 3
+                           : HK_SPLINE_COMPRESSED_ANIMATION);
     anim.Duration(source->Duration());
     anim.NumOfTransformTracks(
         static_cast<uint32>(source->GetNumOfTransformTracks()));

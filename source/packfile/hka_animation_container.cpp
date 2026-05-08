@@ -29,6 +29,11 @@ struct hkaAnimationContainerSaver {
   const hkaAnimationContainerInternalInterface *in;
   const clgen::hkaAnimationContainer::Interface *out;
 
+  size_t PointerArrayAlignment() const {
+    return out->layout->ptrSize == 4 && out->lookup.version >= HK2012_1 ? 16
+                                                                         : 8;
+  }
+
   void Save(BinWritterRef_e wr, hkFixups &fixups) {
     const size_t sBegin = wr.Tell();
     auto &locals = fixups.locals;
@@ -48,7 +53,7 @@ struct hkaAnimationContainerSaver {
     }
 
     if (in->GetNumAnimations()) {
-      wr.ApplyPadding(8);
+      wr.ApplyPadding(PointerArrayAlignment());
       locals.emplace_back(sBegin + out->m(mm::animations), wr.Tell());
 
       for (auto s : in->Animations()) {
@@ -58,7 +63,7 @@ struct hkaAnimationContainerSaver {
     }
 
     if (in->GetNumBindings()) {
-      wr.ApplyPadding(8);
+      wr.ApplyPadding(PointerArrayAlignment());
       locals.emplace_back(sBegin + out->m(mm::bindings), wr.Tell());
 
       for (auto s : in->Bindings()) {
@@ -68,7 +73,7 @@ struct hkaAnimationContainerSaver {
     }
 
     if (in->GetNumAttachments()) {
-      wr.ApplyPadding(8);
+      wr.ApplyPadding(PointerArrayAlignment());
       locals.emplace_back(sBegin + out->m(mm::attachments), wr.Tell());
 
       for (auto s : in->Attachments()) {
@@ -78,7 +83,7 @@ struct hkaAnimationContainerSaver {
     }
 
     if (in->GetNumSkins()) {
-      wr.ApplyPadding(8);
+      wr.ApplyPadding(PointerArrayAlignment());
       locals.emplace_back(sBegin + out->m(mm::skins), wr.Tell());
 
       for (auto s : in->MeshBinds()) {

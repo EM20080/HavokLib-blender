@@ -245,6 +245,7 @@ struct hkaQuantizedAnimationMidInterface
   std::vector<float> dynamicScalarMins;
   std::vector<float> dynamicScalarSpans;
   std::vector<int32> trackToBone;
+  std::vector<uint8> scaleElementMask;
   bool hasTrackMap = false;
 
   std::vector<hkQTransform> staticPose;
@@ -295,6 +296,7 @@ struct hkaQuantizedAnimationMidInterface
 
     staticPose.resize(numTracks);
     frameCache.resize(numTracks);
+    scaleElementMask.assign(numTracks, 0);
     InitPoseFromSkeleton(staticPose, sampleSkeleton);
     InitPose(frameCache);
     BuildTrackMap(sampleSkeleton);
@@ -341,6 +343,8 @@ struct hkaQuantizedAnimationMidInterface
     }
 
     for (size_t i = 0; i < numStaticScalars; i++) {
+      MarkScaleElement(staticElements[i]);
+
       const size_t scalarOffset =
           quantHeader.staticValuesOffset + i * sizeof(float);
       if (scalarOffset + sizeof(float) > dataSize) {
@@ -375,6 +379,7 @@ struct hkaQuantizedAnimationMidInterface
     for (size_t i = 0; i < numDynamicScalars; i++) {
       dynamicScalarElements[i] =
           ReadU16(data + quantHeader.dynamicElementsOffset + i * 2, bigEndian);
+      MarkScaleElement(dynamicScalarElements[i]);
     }
 
     for (size_t i = 0; i < numDynamicRotations; i++) {
@@ -402,6 +407,7 @@ struct hkaQuantizedAnimationMidInterface
       dynamicScalarSpans[i] = ReadF32(data + spanOffset, bigEndian);
     }
 
+    ApplyUniformScaleTracks(staticPose);
     frameCache = staticPose;
     cachedFrame = -1;
 
@@ -483,6 +489,35 @@ struct hkaQuantizedAnimationMidInterface
     return trackID;
   }
 
+  void MarkScaleElement(uint16 element) {
+    const size_t trackIndex = element / 12;
+    const size_t component = element % 12;
+
+    if (trackIndex >= scaleElementMask.size() || component < 8 ||
+        component > 10) {
+      return;
+    }
+
+    scaleElementMask[trackIndex] |= static_cast<uint8>(1u << (component - 8));
+  }
+
+  void ApplyUniformScaleTracks(std::vector<hkQTransform> &pose) const {
+    if (interface.LayoutVersion() < HK700) {
+      return;
+    }
+
+    const size_t numTracks = std::min(pose.size(), scaleElementMask.size());
+
+    for (size_t i = 0; i < numTracks; i++) {
+      if (scaleElementMask[i] != 1) {
+        continue;
+      }
+
+      pose[i].scale.Y = pose[i].scale.X;
+      pose[i].scale.Z = pose[i].scale.X;
+    }
+  }
+
   void DecodeFrame(int32 frame) const {
     if (!valid || frame == cachedFrame || numFrames == 0 || frameCache.empty()) {
       return;
@@ -526,6 +561,7 @@ struct hkaQuantizedAnimationMidInterface
       AssignRotation(frameCache, dynamicRotationElements[i], rot);
     }
 
+    ApplyUniformScaleTracks(frameCache);
     cachedFrame = frame;
   }
 

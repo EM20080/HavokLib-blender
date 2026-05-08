@@ -305,7 +305,7 @@ struct hkaSplineCompressedAnimationMidInterface
   }
 
   void Process() override {
-    decomp.Assign(this);
+    decomp.Assign(this, static_cast<hkToolset>(interface.LayoutVersion()));
     const float duration = this->Duration();
     const uint32 numFrames = this->GetNumFrames();
     this->frameRate = duration > 0.0f && numFrames > 1

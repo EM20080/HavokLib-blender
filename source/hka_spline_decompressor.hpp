@@ -159,10 +159,12 @@ struct TransformTrack {
 };
 
 struct TransformSplineBlock {
-  void Assign(char *buffer, size_t numTracks, size_t numFloatTractks);
+  void Assign(char *buffer, size_t numTracks, size_t numFloatTractks,
+              hkToolset version);
   void GetValue(size_t trackID, float time, hkQTransform &out) const;
 
 private:
+  hkToolset version = HKUNKVER;
   std::span<TransformMask> masks;
   std::vector<TransformTrack> tracks;
 };
@@ -170,7 +172,8 @@ private:
 struct hkaSplineDecompressor {
   std::vector<TransformSplineBlock> blocks;
   // TODO floats
-  void Assign(hkaSplineCompressedAnimationInternalInterface *input);
+  void Assign(hkaSplineCompressedAnimationInternalInterface *input,
+              hkToolset version);
 };
 
 inline void TransformSplineBlock::GetValue(size_t trackID, float time,
@@ -178,4 +181,12 @@ inline void TransformSplineBlock::GetValue(size_t trackID, float time,
   out.rotation = tracks[trackID].rotation->GetValue(time);
   out.translation = tracks[trackID].pos->GetValue(time);
   out.scale = tracks[trackID].scale->GetValue(time);
+
+  const TransformMask &mask = masks[trackID];
+  if (version >= HK700 && mask.GetSubTrackType(ttScaleX) != STT_IDENTITY &&
+      mask.GetSubTrackType(ttScaleY) == STT_IDENTITY &&
+      mask.GetSubTrackType(ttScaleZ) == STT_IDENTITY) {
+    out.scale.Y = out.scale.X;
+    out.scale.Z = out.scale.X;
+  }
 }

@@ -259,11 +259,12 @@ struct TrackBBOX {
 };
 
 void TransformSplineBlock::Assign(char *buffer, size_t numTracks,
-                                  size_t numFloatTractks) {
+                                  size_t numFloatTractks, hkToolset inVersion) {
   auto trackStart = reinterpret_cast<TransformMask *>(buffer);
   buffer += sizeof(TransformMask) * numTracks + numFloatTractks;
   ApplyPadding(buffer);
   int cTrack = 0;
+  version = inVersion;
   masks = {trackStart, numTracks};
   tracks.resize(numTracks);
 
@@ -420,7 +421,7 @@ void TransformSplineBlock::Assign(char *buffer, size_t numTracks,
 }
 
 void hkaSplineDecompressor::Assign(
-    hkaSplineCompressedAnimationInternalInterface *input) {
+    hkaSplineCompressedAnimationInternalInterface *input, hkToolset version) {
   auto blockOffsets = input->GetBlockOffsets();
   char *data = input->GetData();
   blocks.resize(blockOffsets.size());
@@ -432,7 +433,8 @@ void hkaSplineDecompressor::Assign(
 
   for (auto &b : blocks) {
     b.Assign(data + *(blockOffsets.data() + cBlock),
-             input->GetNumOfTransformTracks(), input->GetNumOfFloatTracks());
+             input->GetNumOfTransformTracks(), input->GetNumOfFloatTracks(),
+             version);
     cBlock++;
   }
 }

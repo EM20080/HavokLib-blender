@@ -23,6 +23,14 @@
 
 namespace {
 
+void SetLockedArrayCapacity(char *data, int16 countOffset, uint32 count) {
+  if (countOffset < 0) {
+    return;
+  }
+
+  *reinterpret_cast<uint32 *>(data + countOffset + 4) = 0x80000000u | count;
+}
+
 struct hkaDefaultAnimatedReferenceFrameSaver {
   const hkaAnimatedReferenceFrameInternalInterface *in;
   const clgen::hkaDefaultAnimatedReferenceFrame::Interface *out;
@@ -127,10 +135,18 @@ struct hkaDefaultAnimatedReferenceFrameMidInterface
     interface.Duration(source->GetDuration());
     interface.NumReferenceFrameSamples(
         static_cast<uint32>(source->GetNumFrames()));
+    if (interface.LayoutVersion() >= HK2012_1) {
+      SetLockedArrayCapacity(interface.data,
+                             interface.m(clgen::hkaDefaultAnimatedReferenceFrame::
+                                             Members::numReferenceFrameSamples),
+                             static_cast<uint32>(source->GetNumFrames()));
+    }
 
     auto base = interface.BasehkaAnimatedReferenceFrame();
     if (base.m(clgen::hkaAnimatedReferenceFrame::Members::frameType) >= 0) {
-      base.FrameType(source->GetType());
+      base.FrameType(interface.LayoutVersion() >= HK2012_1
+                         ? hkaAnimatedReferenceFrameType::UNKNOWN
+                         : source->GetType());
     }
   }
 

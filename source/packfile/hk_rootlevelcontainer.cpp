@@ -102,8 +102,13 @@ struct hkRootLevelContainerSaver {
       auto writeVariant = [&](const hkNamedVariant &i) {
         locals[curFixup + kNameFixup].destination = wr.Tell();
         wr.WriteBuffer(i.name.data(), i.name.size() + 1);
-        locals[curFixup + kClassNameFixup].destination = wr.Tell();
-        wr.WriteBuffer(i.className.data(), i.className.size() + 1);
+        if (out->LayoutVersion() >= HK2012_1) {
+          wr.ApplyPadding();
+          locals[curFixup + kClassNameFixup].destination = wr.Tell();
+        } else {
+          locals[curFixup + kClassNameFixup].destination = wr.Tell();
+          wr.WriteBuffer(i.className.data(), i.className.size() + 1);
+        }
         if (i.pointer) {
           locals[curFixup + kVariantFixup].destClass = i.pointer;
         } else if (std::string_view(i.className) == "hkxScene") {

@@ -499,6 +499,24 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           return sig.second;
         }
       }
+    } else if (toolset == HK2012_1 || toolset == HK2012_2) {
+      static const std::pair<std::string_view, uint32> signatures[] = {
+          {"hkClass", 0x33D42383},
+          {"hkClassMember", 0xB0EFA719},
+          {"hkClassEnum", 0x8A3609CF},
+          {"hkClassEnumItem", 0xCE6F8A6C},
+          {"hkRootLevelContainer", 0x2772C11E},
+          {"hkaAnimationContainer", 0x8DC20333},
+          {"hkaSplineCompressedAnimation", 0xA57D6A61},
+          {"hkaDefaultAnimatedReferenceFrame", 0xB287B5E8},
+          {"hkaAnimationBinding", 0xA808529F},
+      };
+
+      for (auto &sig : signatures) {
+        if (sig.first == name) {
+          return sig.second;
+        }
+      }
     }
 
     return JenHash(name).raw();
@@ -661,7 +679,13 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   }
 
   wr.ResetRelativeOrigin(false);
-  wr.ApplyPadding();
+  if (toolset == HK2012_1 || toolset == HK2012_2) {
+    while (GetPadding(wr.Tell(), 16)) {
+      wr.Write<uint8>(0xFF);
+    }
+  } else {
+    wr.ApplyPadding();
+  }
   classSection.bufferSize =
       static_cast<uint32>(wr.Tell() - classSection.absoluteDataStart);
   classSection.exportsOffset = classSection.bufferSize;

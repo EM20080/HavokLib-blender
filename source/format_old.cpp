@@ -22,6 +22,7 @@
 #include "hklib/hka_animation.hpp"
 #include "hklib/hka_skeleton.hpp"
 #include "hklib/hk_rootlevelcontainer.hpp"
+#include "hklib/hkp_collision.hpp"
 #include "internal/hk_internal_api.hpp"
 #include "spike/crypto/jenkinshash.hpp"
 #include "spike/except.hpp"
@@ -371,9 +372,22 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
 
   wr.SwapEndian((layout.littleEndian != 0) != LittleEndian());
 
+  const size_t collisionClassCount =
+      std::count_if(classes.begin(), classes.end(), [&](auto &c) {
+        auto dc = checked_deref_cast<const hkVirtualClass>(c.get());
+        return dc->GetClassName(toolset).starts_with("hkp");
+      });
+
   hkxHeaderData hdr = *this;
   hdr.numSections = 3;
   hdr.contentsSectionIndex = dataSectionId;
+  if (collisionClassCount) {
+    if (toolset == HK550) {
+      hdr.contentsClassNameSectionOffset = 902;
+    } else if (toolset == HK2010_2 || toolset == HK2012_2) {
+      hdr.contentsClassNameSectionOffset = 75;
+    }
+  }
   if (toolset == HK550)
     hdr.flags = 0xFFFFFFFF;
   hdr.maxpredicate = -1;
@@ -472,6 +486,59 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkaAnimationContainer", 0xF456626D},
           {"hkaAnnotationTrack", 0x846FC690},
           {"hkaAnimationBinding", 0xFB496074},
+          {"hkAabb", 0x4A948B16},
+          {"hkpShapeContainer", 0xE0708A00},
+          {"hkpEntity", 0xFA798537},
+          {"hkpMaterial", 0x0485A264},
+          {"hkpMoppCode", 0x72EE59F8},
+          {"hkpSphereRepShape", 0xE7ECA7EB},
+          {"hkAabbUint32", 0xAC084729},
+          {"hkpRigidBody", 0x3224DE76},
+          {"hkpStorageExtendedMeshShapeMeshSubpartStorage", 0x3B2F0B51},
+          {"hkpExtendedMeshShapeSubpart", 0x7C9435C7},
+          {"hkpStorageExtendedMeshShape", 0xC22CA89E},
+          {"hkpExtendedMeshShape", 0x260C3908},
+          {"hkpConstraintInstance", 0x2033B565},
+          {"hkMultiThreadCheck", 0x1C3C8820},
+          {"hkpExtendedMeshShapeShapesSubpart", 0xFCE016A3},
+          {"hkpConstraintData", 0xC18F0D87},
+          {"hkpStorageExtendedMeshShapeShapeSubpartStorage", 0x502939ED},
+          {"hkpTypedBroadPhaseHandle", 0xA539881B},
+          {"hkpAction", 0xB6966E59},
+          {"hkpWorldObject", 0x50F6EE9F},
+          {"hkpMoppCodeCodeInfo", 0xD8FDBB08},
+          {"hkMotionState", 0x064E7CE4},
+          {"hkpPhantom", 0xAA0ADE1A},
+          {"hkpBoxShape", 0x3444D2D5},
+          {"hkpEntitySmallArraySerializeOverrideType", 0xEB2364C1},
+          {"hkpPhysicsData", 0xC2A461E4},
+          {"hkWorldMemoryAvailableWatchDog", 0x0D13F6B4},
+          {"hkpPhysicsSystem", 0x1B58F0EF},
+          {"hkSweptTransform", 0x0B4E5770},
+          {"hkpCollidable", 0x5879A2C3},
+          {"hkpBroadPhaseHandle", 0x940569DC},
+          {"hkpShapeCollection", 0x9B1A3265},
+          {"hkpExtendedMeshShapeTrianglesSubpart", 0x3375309C},
+          {"hkpKeyframedRigidMotion", 0x8B0A2DBF},
+          {"hkMoppBvTreeShapeBase", 0x4117D60E},
+          {"hkpMoppBvTreeShape", 0xDBBA3C29},
+          {"hkpBvTreeShape", 0xE7ECA7EB},
+          {"hkpModifierConstraintAtom", 0xBB7A348B},
+          {"hkpSingleShapeContainer", 0x73AA1D38},
+          {"hkpCollisionFilter", 0x60960336},
+          {"hkpProperty", 0x9CE308E9},
+          {"hkpLinkedCollidable", 0x4E89E0F0},
+          {"hkpWorldCinfo", 0x3FCD7295},
+          {"hkpMaxSizeMotion", 0xABE8F4F8},
+          {"hkpPropertyValue", 0xC75925AA},
+          {"hkpCdBody", 0xE94D2688},
+          {"hkpShape", 0x666490A1},
+          {"hkpCollidableBoundingVolumeData", 0x97B45527},
+          {"hkpMotion", 0x141ABDC9},
+          {"hkpConvexListFilter", 0x81D074A4},
+          {"hkpConvexShape", 0xF8F74F85},
+          {"hkpEntitySpuCollisionCallback", 0x81147F05},
+          {"hkpConstraintAtom", 0xED982D04},
       };
 
       for (auto &sig : signatures) {
@@ -486,12 +553,20 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkClassEnum", 0x8A3609CF},
           {"hkClassEnumItem", 0xCE6F8A6C},
           {"hkRootLevelContainer", 0x2772C11E},
+          {"hkxScene", 0x5F673DDD},
           {"hkaAnimationContainer", 0x8DC20333},
           {"hkaInterleavedUncompressedAnimation", 0x930AF031},
           {"hkaSplineCompressedAnimation", 0x792EE0BB},
           {"hkaDefaultAnimatedReferenceFrame", 0x6D85E445},
           {"hkaAnimationBinding", 0x66EAC971},
-          {"hkxScene", 0x5F673DDD},
+          {"hkpPhysicsData", 0xC2A461E4},
+          {"hkpPhysicsSystem", 0xFF724C17},
+          {"hkpRigidBody", 0x75F8D805},
+          {"hkpMoppBvTreeShape", 0x90B29D39},
+          {"hkpMoppCode", 0x924C2661},
+          {"hkpStorageExtendedMeshShape", 0xB469EFBC},
+          {"hkpStorageExtendedMeshShapeMeshSubpartStorage", 0x5AAD4DE6},
+          {"hkpBoxShape", 0x3444D2D5},
       };
 
       for (auto &sig : signatures) {
@@ -506,10 +581,21 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkClassEnum", 0x8A3609CF},
           {"hkClassEnumItem", 0xCE6F8A6C},
           {"hkRootLevelContainer", 0x2772C11E},
+          {"hkxScene", 0x3637A8EC},
           {"hkaAnimationContainer", 0x8DC20333},
           {"hkaSplineCompressedAnimation", 0xA57D6A61},
           {"hkaDefaultAnimatedReferenceFrame", 0xB287B5E8},
           {"hkaAnimationBinding", 0xA808529F},
+          {"hkpPhysicsData", 0xC2A461E4},
+          {"hkpPhysicsSystem", 0xFF724C17},
+          {"hkpRigidBody", 0xD0313594},
+          {"hkpStaticCompoundShape", 0xE198603F},
+          {"hkpBvCompressedMeshShape", 0x7A192C95},
+          {"hkpMoppBvTreeShape", 0x96CE87D2},
+          {"hkpMoppCode", 0x924C2661},
+          {"hkpStorageExtendedMeshShape", 0x30C05D40},
+          {"hkpStorageExtendedMeshShapeMeshSubpartStorage", 0x5AAD4DE6},
+          {"hkpBoxShape", 0x0C1112EA},
       };
 
       for (auto &sig : signatures) {
@@ -536,8 +622,16 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     writeClassName(c);
   }
 
+  auto writeOldClassNames = [&](const auto &classNames) {
+    for (auto &c : classNames) {
+      if (!cnOffsetMap.contains(std::string(c))) {
+        writeClassName(c);
+      }
+    }
+  };
+
   if (toolset == HK550) {
-    static const std::string_view legacy550ClassNames[] = {
+    static const std::string_view legacy550AnimationClassNames[] = {
         "hkRootLevelContainer",
         "hkaAnimatedReferenceFrame",
         "hkxMeshUserChannelInfo",
@@ -578,11 +672,88 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "hkaAnimationBinding",
     };
 
-    for (auto &c : legacy550ClassNames) {
-      if (!cnOffsetMap.contains(std::string(c))) {
-        writeClassName(c);
-      }
+    static const std::string_view hk550CollisionClassNames[] = {
+        "hkpPhantom",
+        "hkpBoxShape",
+        "hkAabb",
+        "hkpEntitySmallArraySerializeOverrideType",
+        "hkpPhysicsData",
+        "hkWorldMemoryAvailableWatchDog",
+        "hkpPhysicsSystem",
+        "hkSweptTransform",
+        "hkpShapeContainer",
+        "hkpCollidable",
+        "hkpBroadPhaseHandle",
+        "hkpEntity",
+        "hkpShapeCollection",
+        "hkpMaterial",
+        "hkpExtendedMeshShapeTrianglesSubpart",
+        "hkpKeyframedRigidMotion",
+        "hkMoppBvTreeShapeBase",
+        "hkpMoppCode",
+        "hkAabbUint32",
+        "hkpSphereRepShape",
+        "hkpMoppBvTreeShape",
+        "hkpRigidBody",
+        "hkpStorageExtendedMeshShapeMeshSubpartStorage",
+        "hkpBvTreeShape",
+        "hkpExtendedMeshShapeSubpart",
+        "hkpStorageExtendedMeshShape",
+        "hkpExtendedMeshShape",
+        "hkpModifierConstraintAtom",
+        "hkpSingleShapeContainer",
+        "hkReferencedObject",
+        "hkpCollisionFilter",
+        "hkpConstraintInstance",
+        "hkpProperty",
+        "hkRootLevelContainer",
+        "hkpLinkedCollidable",
+        "hkMultiThreadCheck",
+        "hkpWorldCinfo",
+        "hkpMaxSizeMotion",
+        "hkpPropertyValue",
+        "hkpCdBody",
+        "hkBaseObject",
+        "hkpShape",
+        "hkpExtendedMeshShapeShapesSubpart",
+        "hkpCollidableBoundingVolumeData",
+        "hkpConstraintData",
+        "hkpStorageExtendedMeshShapeShapeSubpartStorage",
+        "hkpTypedBroadPhaseHandle",
+        "hkpMotion",
+        "hkpWorldObject",
+        "hkpAction",
+        "hkpConvexListFilter",
+        "hkpConvexShape",
+        "hkRootLevelContainerNamedVariant",
+        "hkpEntitySpuCollisionCallback",
+        "hkpMoppCodeCodeInfo",
+        "hkMotionState",
+        "hkpConstraintAtom",
+    };
+
+    if (collisionClassCount) {
+      writeOldClassNames(hk550CollisionClassNames);
+    } else {
+      writeOldClassNames(legacy550AnimationClassNames);
     }
+  }
+
+  if (collisionClassCount &&
+      (toolset == HK2010_2 || toolset == HK2012_2)) {
+    static const std::string_view hk2010CollisionClassNames[] = {
+        "hkRootLevelContainer",
+        "hkxScene",
+        "hkpPhysicsData",
+        "hkpPhysicsSystem",
+        "hkpRigidBody",
+        "hkpMoppBvTreeShape",
+        "hkpMoppCode",
+        "hkpStorageExtendedMeshShape",
+        "hkpStorageExtendedMeshShapeMeshSubpartStorage",
+        "hkpBoxShape",
+    };
+    writeOldClassNames(hk2010CollisionClassNames);
   }
 
   CRule rule(toolset, layout.reusePaddingOptimization,
@@ -679,12 +850,154 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   }
 
   wr.ResetRelativeOrigin(false);
-  if (toolset == HK2012_1 || toolset == HK2012_2) {
+  if (collisionClassCount && toolset == HK550 &&
+      fixups.finals.size() == refClasses.size()) {
+    std::unordered_map<IhkVirtualClass *, size_t> refIndex;
+    refIndex.reserve(refClasses.size());
+    for (size_t i = 0; i < refClasses.size(); i++) {
+      refIndex[refClasses[i].get()] = i;
+    }
+
+    std::vector<size_t> orderedIndices;
+    std::vector<uint8> used(refClasses.size(), 0);
+    orderedIndices.reserve(refClasses.size());
+
+    auto appendSourceClass = [&](const IhkVirtualClass *source) {
+      if (!source) {
+        return;
+      }
+
+      auto mapped = clsRemap.find(source);
+      if (mapped == clsRemap.end() || !mapped->second) {
+        return;
+      }
+
+      auto index = refIndex.find(mapped->second);
+      if (index == refIndex.end() || used[index->second]) {
+        return;
+      }
+
+      used[index->second] = 1;
+      orderedIndices.emplace_back(index->second);
+    };
+
+    auto appendShapeTree = [&](const hkpShape *shape, const auto &self) -> void {
+      if (!shape) {
+        return;
+      }
+
+      appendSourceClass(shape);
+
+      if (const auto *mopp = safe_deref_cast<const hkpMoppBvTreeShape>(shape)) {
+        appendSourceClass(mopp->GetCode());
+        self(mopp->GetChildShape(), self);
+        return;
+      }
+
+      if (const auto *storage =
+              safe_deref_cast<const hkpStorageExtendedMeshShape>(shape)) {
+        for (size_t i = 0; i < storage->GetNumMeshSubparts(); i++) {
+          appendSourceClass(storage->GetMeshSubpart(i));
+        }
+        for (size_t i = 0; i < storage->GetNumShapeSubparts(); i++) {
+          const auto *subpart = storage->GetShapeSubpart(i);
+          appendSourceClass(subpart);
+          if (!subpart) {
+            continue;
+          }
+          for (size_t s = 0; s < subpart->GetNumShapes(); s++) {
+            self(subpart->GetShape(s), self);
+          }
+        }
+        return;
+      }
+
+      if (const auto *list = safe_deref_cast<const hkpListShape>(shape)) {
+        for (size_t i = 0; i < list->GetNumChildren(); i++) {
+          self(list->GetChild(i), self);
+        }
+        return;
+      }
+
+      if (const auto *compound =
+              safe_deref_cast<const hkpStaticCompoundShape>(shape)) {
+        for (size_t i = 0; i < compound->GetNumInstances(); i++) {
+          self(compound->GetInstance(i).shape, self);
+        }
+      }
+    };
+
+    auto appendPhysicsData = [&](const hkpPhysicsData *physicsData) {
+      appendSourceClass(physicsData);
+      if (!physicsData) {
+        return;
+      }
+
+      for (size_t systemIndex = 0; systemIndex < physicsData->GetNumSystems();
+           systemIndex++) {
+        const auto *system = physicsData->GetSystem(systemIndex);
+        appendSourceClass(system);
+        if (!system) {
+          continue;
+        }
+
+        for (size_t bodyIndex = 0; bodyIndex < system->GetNumRigidBodies();
+             bodyIndex++) {
+          const auto *body = system->GetRigidBody(bodyIndex);
+          appendSourceClass(body);
+          if (body) {
+            appendShapeTree(body->GetShape(), appendShapeTree);
+          }
+        }
+      }
+    };
+
+    for (const auto &sourceClass : classes) {
+      if (const auto *root =
+              safe_deref_cast<const hkRootLevelContainer>(sourceClass.get())) {
+        appendSourceClass(root);
+        for (const auto &variant : *root) {
+          if (const auto *physicsData =
+                  safe_deref_cast<const hkpPhysicsData>(variant.pointer)) {
+            appendPhysicsData(physicsData);
+          } else {
+            appendSourceClass(variant.pointer);
+          }
+        }
+      }
+    }
+
+    for (size_t i = 0; i < refClasses.size(); i++) {
+      if (!used[i]) {
+        orderedIndices.emplace_back(i);
+      }
+    }
+
+    VirtualClasses orderedClasses;
+    std::vector<hkFixup> orderedFinals;
+    orderedClasses.reserve(refClasses.size());
+    orderedFinals.reserve(fixups.finals.size());
+    for (size_t index : orderedIndices) {
+      orderedClasses.emplace_back(std::move(refClasses[index]));
+      orderedFinals.emplace_back(std::move(fixups.finals[index]));
+    }
+    refClasses = std::move(orderedClasses);
+    fixups.finals = std::move(orderedFinals);
+  }
+
+  if (collisionClassCount &&
+      (toolset == HK550 || toolset == HK2010_2 || toolset == HK2012_2)) {
     while (GetPadding(wr.Tell(), 16)) {
       wr.Write<uint8>(0xFF);
     }
   } else {
-    wr.ApplyPadding();
+    if (toolset == HK2012_1 || toolset == HK2012_2) {
+      while (GetPadding(wr.Tell(), 16)) {
+        wr.Write<uint8>(0xFF);
+      }
+    } else {
+      wr.ApplyPadding();
+    }
   }
   classSection.bufferSize =
       static_cast<uint32>(wr.Tell() - classSection.absoluteDataStart);
@@ -707,8 +1020,87 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   mainSection.absoluteDataStart = static_cast<uint32>(wr.Tell());
   wr.SetRelativeOrigin(wr.Tell(), false);
 
+  if (collisionClassCount &&
+      (toolset == HK550 || toolset == HK2010_2 || toolset == HK2012_2)) {
+    constexpr size_t npos = static_cast<size_t>(-1);
+    size_t rootIndex = npos;
+    size_t sceneIndex = npos;
+
+    for (size_t i = 0; i < refClasses.size(); i++) {
+      auto cls = checked_deref_cast<const hkVirtualClass>(refClasses[i].get());
+      const auto clName = cls->GetClassName(toolset);
+      if (clName == "hkRootLevelContainer") {
+        rootIndex = i;
+      } else if (clName == "hkxScene") {
+        sceneIndex = i;
+      }
+    }
+
+    if (rootIndex != npos && sceneIndex != npos &&
+        sceneIndex != rootIndex + 1) {
+      auto sceneClass = std::move(refClasses[sceneIndex]);
+      auto sceneFinal = std::move(fixups.finals[sceneIndex]);
+      refClasses.erase(refClasses.begin() + sceneIndex);
+      fixups.finals.erase(fixups.finals.begin() + sceneIndex);
+      if (sceneIndex < rootIndex) {
+        rootIndex--;
+      }
+      refClasses.insert(refClasses.begin() + rootIndex + 1,
+                        std::move(sceneClass));
+      fixups.finals.insert(fixups.finals.begin() + rootIndex + 1,
+                           std::move(sceneFinal));
+    }
+  }
+
   size_t curFixup = 0;
   std::unordered_map<IhkVirtualClass *, size_t> savedClasses;
+  size_t legacySceneOffset = static_cast<size_t>(-1);
+
+  auto writeLegacySceneData = [&]() {
+    if (legacySceneOffset != static_cast<size_t>(-1) ||
+        !fixups.legacyScene || fixups.legacyScene->data.empty()) {
+      return;
+    }
+
+    wr.ApplyPadding();
+    legacySceneOffset = wr.Tell();
+    wr.WriteBuffer(fixups.legacyScene->data.data(),
+                   fixups.legacyScene->data.size());
+  };
+
+  size_t legacySceneLocalFixupsWritten = 0;
+  auto writeLegacySceneLocalFixups = [&]() {
+    if (legacySceneLocalFixupsWritten || !fixups.legacyScene ||
+        legacySceneOffset == static_cast<size_t>(-1)) {
+      return;
+    }
+
+    for (const auto &lf : fixups.legacyScene->localFixups) {
+      hkxSectionHeader::hkxLocalFixup lFix;
+      lFix.pointer = static_cast<int32>(legacySceneOffset + lf.pointer);
+      lFix.destination =
+          static_cast<int32>(legacySceneOffset + lf.destination);
+      mainSection.localFixups.push_back(lFix);
+    }
+
+    legacySceneLocalFixupsWritten = fixups.legacyScene->localFixups.size();
+  };
+
+  size_t legacySceneGlobalFixupsWritten = 0;
+  auto writeLegacySceneGlobalFixup = [&]() {
+    if (legacySceneGlobalFixupsWritten || !fixups.legacyScene ||
+        legacySceneOffset == static_cast<size_t>(-1) ||
+        fixups.legacyScene->variantPtrOff == static_cast<size_t>(-1)) {
+      return;
+    }
+
+    hkxSectionHeader::hkxGlobalFixup gFix;
+    gFix.sectionid = dataSectionId;
+    gFix.pointer = static_cast<int32>(fixups.legacyScene->variantPtrOff);
+    gFix.destination = static_cast<int32>(legacySceneOffset);
+    mainSection.globalFixups.push_back(gFix);
+    legacySceneGlobalFixupsWritten = 1;
+  };
 
   for (auto &c : refClasses) {
     wr.ApplyPadding();
@@ -717,7 +1109,11 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     fixups.finals[curFixup++].destination = clsOffset;
 
     auto cls = checked_deref_cast<const hkVirtualClass>(c.get());
+    const auto clName = cls->GetClassName(toolset);
     cls->Save(wr, fixups);
+    if (clsOffset == 0) {
+      writeLegacySceneData();
+    }
 
     while (curFixup < fixups.finals.size() &&
            fixups.finals[curFixup].destClass) {
@@ -725,7 +1121,20 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     }
   }
 
+  writeLegacySceneData();
+
   for (auto &l : fixups.locals) {
+    if (legacySceneOffset != static_cast<size_t>(-1) &&
+        l.strOffset >= legacySceneOffset) {
+      writeLegacySceneLocalFixups();
+    }
+
+    if (fixups.legacyScene &&
+        fixups.legacyScene->variantPtrOff != static_cast<size_t>(-1) &&
+        l.strOffset > fixups.legacyScene->variantPtrOff) {
+      writeLegacySceneGlobalFixup();
+    }
+
     if (l.destClass) {
       auto sClass = clsRemap[l.destClass];
       if (sClass) {
@@ -742,51 +1151,51 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
       mainSection.localFixups.push_back(lFix);
     }
   }
+  writeLegacySceneLocalFixups();
+  writeLegacySceneGlobalFixup();
 
+  size_t legacySceneVirtualFixupsWritten = 0;
   for (auto &l : fixups.finals) {
     hkxSectionHeader::hkxVirtualFixup lFix;
     lFix.sectionid = 0;
-    lFix.classnameoffset = l.strOffset;
-    lFix.dataoffset = l.destination;
+    lFix.classnameoffset = static_cast<int32>(l.strOffset);
+    lFix.dataoffset = static_cast<int32>(l.destination);
     mainSection.virtualFixups.push_back(lFix);
+
+    const auto rootName = cnOffsetMap.find("hkRootLevelContainer");
+    if (!legacySceneVirtualFixupsWritten &&
+        legacySceneOffset != static_cast<size_t>(-1) &&
+        rootName != cnOffsetMap.end() && l.strOffset == rootName->second) {
+      auto cnIt = cnOffsetMap.find(fixups.legacyScene->className);
+      if (cnIt != cnOffsetMap.end()) {
+        hkxSectionHeader::hkxVirtualFixup sceneFix;
+        sceneFix.sectionid = 0;
+        sceneFix.classnameoffset = static_cast<int32>(cnIt->second);
+        sceneFix.dataoffset = static_cast<int32>(legacySceneOffset);
+        mainSection.virtualFixups.push_back(sceneFix);
+        legacySceneVirtualFixupsWritten = 1;
+      }
+    }
   }
 
   for (auto &l : fixups.globals) {
     hkxSectionHeader::hkxGlobalFixup lFix;
     lFix.sectionid = dataSectionId;
-    lFix.pointer = l.strOffset;
-    lFix.destination = l.destination;
+    lFix.pointer = static_cast<int32>(l.strOffset);
+    lFix.destination = static_cast<int32>(l.destination);
     mainSection.globalFixups.push_back(lFix);
   }
 
-  if (fixups.legacyScene && !fixups.legacyScene->data.empty()) {
-    wr.ApplyPadding();
-    const size_t sceneOffset = wr.Tell();
-    wr.WriteBuffer(fixups.legacyScene->data.data(),
-                   fixups.legacyScene->data.size());
-
-    for (const auto &lf : fixups.legacyScene->localFixups) {
-      hkxSectionHeader::hkxLocalFixup lFix;
-      lFix.pointer = static_cast<int32>(sceneOffset + lf.pointer);
-      lFix.destination = static_cast<int32>(sceneOffset + lf.destination);
-      mainSection.localFixups.push_back(lFix);
-    }
-
-    auto cnIt = cnOffsetMap.find(fixups.legacyScene->className);
-    if (cnIt != cnOffsetMap.end()) {
-      hkxSectionHeader::hkxVirtualFixup vFix;
-      vFix.sectionid = 0;
-      vFix.classnameoffset = static_cast<int32>(cnIt->second);
-      vFix.dataoffset = static_cast<int32>(sceneOffset);
-      mainSection.virtualFixups.push_back(vFix);
-    }
-
-    if (fixups.legacyScene->variantPtrOff != static_cast<size_t>(-1)) {
-      hkxSectionHeader::hkxGlobalFixup gFix;
-      gFix.sectionid = dataSectionId;
-      gFix.pointer = static_cast<int32>(fixups.legacyScene->variantPtrOff);
-      gFix.destination = static_cast<int32>(sceneOffset);
-      mainSection.globalFixups.push_back(gFix);
+  if (fixups.legacyScene && legacySceneOffset != static_cast<size_t>(-1)) {
+    if (!legacySceneVirtualFixupsWritten) {
+      auto cnIt = cnOffsetMap.find(fixups.legacyScene->className);
+      if (cnIt != cnOffsetMap.end()) {
+        hkxSectionHeader::hkxVirtualFixup vFix;
+        vFix.sectionid = 0;
+        vFix.classnameoffset = static_cast<int32>(cnIt->second);
+        vFix.dataoffset = static_cast<int32>(legacySceneOffset);
+        mainSection.virtualFixups.push_back(vFix);
+      }
     }
   }
 
@@ -800,6 +1209,11 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   wr.ApplyPadding();
   mainSection.globalFixupsOffset = static_cast<int32>(wr.Tell());
   wr.WriteContainer(mainSection.globalFixups);
+  if (collisionClassCount && toolset == HK550) {
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+  }
   const size_t preVirtualPad = GetPadding(wr.Tell(), 16) / 4;
   for (size_t p = 0; p < preVirtualPad; p++) {
     wr.Write<int32>(-1);

@@ -33,6 +33,7 @@ struct hkPreservedSceneBlob {
   std::string className;
   std::string data;
   std::vector<hkPreservedLocalFixup> localFixups;
+  std::uint8_t sourceLittleEndian{1};
 };
 
 struct hkRootLevelContainerInternalInterface : hkRootLevelContainer,

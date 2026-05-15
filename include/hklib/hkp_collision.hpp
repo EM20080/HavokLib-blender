@@ -24,11 +24,13 @@ struct hkpPhysicsSystem;
 struct hkpRigidBody;
 struct hkpShape;
 struct hkpMoppCode;
+struct hkpStaticCompoundShape;
 struct hkpStorageExtendedMeshShapeMeshSubpartStorage;
 struct hkpStorageExtendedMeshShapeShapeSubpartStorage;
 
 struct hkpRigidBodyProperty {
   uint32 key{};
+  uint32 alignmentPadding{};
   uint64 data{};
 };
 
@@ -50,7 +52,7 @@ struct hkpPhysicsSystem : IhkVirtualClass {
   DECLARE_HKCLASS(hkpPhysicsSystem)
 
   virtual std::string_view GetName() const = 0;
-  virtual bool IsActive() const = 0;
+  virtual bool GetActive() const = 0;
   virtual size_t GetNumRigidBodies() const = 0;
   virtual const hkpRigidBody *GetRigidBody(size_t id) const = 0;
 
@@ -78,6 +80,45 @@ struct hkpRigidBody : IhkVirtualClass {
   virtual size_t GetNumProperties() const = 0;
   virtual hkpRigidBodyProperty GetProperty(size_t id) const = 0;
   virtual es::Matrix44 GetTransform() const = 0;
+  virtual Vector4A16 GetCenterOfMassLocal() const {
+    return Vector4A16(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  virtual Vector4A16 GetCenterOfMassWorld() const {
+    return Vector4A16(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  virtual Vector4A16 GetRotation() const {
+    return Vector4A16(0.0f, 0.0f, 0.0f, 1.0f);
+  }
+  virtual Vector4A16 GetInertiaAndMassInv() const {
+    return Vector4A16(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  virtual Vector4A16 GetLinearVelocity() const {
+    return Vector4A16(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  virtual Vector4A16 GetAngularVelocity() const {
+    return Vector4A16(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  virtual float GetMotionObjectRadius() const { return 0.0f; }
+  virtual float GetLinearDamping() const { return 0.0f; }
+  virtual float GetAngularDamping() const { return 0.0f; }
+  virtual float GetTimeFactor() const { return 1.0f; }
+  virtual float GetGravityFactor() const { return 1.0f; }
+  virtual uint8 GetDeactivationIntegrateCounter() const {
+    return GetMotionType() == 5 ? 0 : 15;
+  }
+  virtual uint16 GetDeactivationNumInactiveFrames(size_t id) const {
+    return GetMotionType() == 5 || id > 1 ? 0 : 0xc000;
+  }
+  virtual uint8 GetMaxLinearVelocity() const {
+    return GetMotionType() == 5 ? 0 : 127;
+  }
+  virtual uint8 GetMaxAngularVelocity() const {
+    return GetMotionType() == 5 ? 0 : 127;
+  }
+  virtual uint8 GetDeactivationClass() const {
+    return GetMotionType() == 5 ? 0 : 2;
+  }
+  virtual uint16 GetSavedQualityTypeIndex() const { return 0; }
   virtual const hkpShape *GetShape() const = 0;
 };
 
@@ -99,6 +140,23 @@ struct hkpMoppBvTreeShape : hkpShape {
 
   virtual const hkpMoppCode *GetCode() const = 0;
   virtual const hkpShape *GetChildShape() const = 0;
+};
+
+struct hkpStaticCompoundShapeInstance {
+  const hkpShape *shape{};
+  Vector4A16 translation{};
+  Vector4A16 rotation{0.0f, 0.0f, 0.0f, 1.0f};
+  Vector4A16 scale{1.0f, 1.0f, 1.0f, 0.0f};
+  uint32 filterInfo{};
+  uint32 childFilterInfoMask{0xffffffffu};
+  uint32 userData{};
+};
+
+struct hkpStaticCompoundShape : hkpShape {
+  DECLARE_HKCLASS(hkpStaticCompoundShape)
+
+  virtual size_t GetNumInstances() const = 0;
+  virtual hkpStaticCompoundShapeInstance GetInstance(size_t id) const = 0;
 };
 
 struct hkpStorageExtendedMeshShape : hkpShape {

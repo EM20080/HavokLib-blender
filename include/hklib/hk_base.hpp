@@ -59,6 +59,7 @@ struct hkpRigidBody;
 struct hkpShape;
 struct hkpMoppCode;
 struct hkpMoppBvTreeShape;
+struct hkpStaticCompoundShape;
 struct hkpStorageExtendedMeshShape;
 struct hkpStorageExtendedMeshShapeMeshSubpartStorage;
 struct hkpStorageExtendedMeshShapeShapeSubpartStorage;
@@ -88,6 +89,7 @@ struct IhkVirtualClass {
   virtual operator hkpShape const *() const { return nullptr; }
   virtual operator hkpMoppCode const *() const { return nullptr; }
   virtual operator hkpMoppBvTreeShape const *() const { return nullptr; }
+  virtual operator hkpStaticCompoundShape const *() const { return nullptr; }
   virtual operator hkpStorageExtendedMeshShape const *() const {
     return nullptr;
   }

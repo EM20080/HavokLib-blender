@@ -57,6 +57,15 @@ struct hkpMoppBvTreeShapeInternalInterface : hkpMoppBvTreeShape, hkVirtualClass 
   static IhkVirtualClass *Create(CRule rule);
 };
 
+struct hkpStaticCompoundShapeInternalInterface
+    : hkpStaticCompoundShape, hkVirtualClass {
+  hkpStaticCompoundShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
+  operator hkpStaticCompoundShape const *() const override { return this; }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
 struct hkpStorageExtendedMeshShapeInternalInterface
     : hkpStorageExtendedMeshShape, hkVirtualClass {
   hkpStorageExtendedMeshShapeInternalInterface() { AddHash(hkpShape::GetHash()); }

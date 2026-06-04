@@ -57,6 +57,11 @@ struct hkpPhysicsData;
 struct hkpPhysicsSystem;
 struct hkpRigidBody;
 struct hkpShape;
+struct hkpSampledHeightFieldShape;
+struct hkpStorageSampledHeightFieldShape;
+struct hkpCompressedSampledHeightFieldShape;
+struct hkpTriSampledHeightFieldCollection;
+struct hkpTriSampledHeightFieldBvTreeShape;
 struct hkpMoppCode;
 struct hkpMoppBvTreeShape;
 struct hkpStaticCompoundShape;
@@ -87,6 +92,21 @@ struct IhkVirtualClass {
   virtual operator hkpPhysicsSystem const *() const { return nullptr; }
   virtual operator hkpRigidBody const *() const { return nullptr; }
   virtual operator hkpShape const *() const { return nullptr; }
+  virtual operator hkpSampledHeightFieldShape const *() const {
+    return nullptr;
+  }
+  virtual operator hkpStorageSampledHeightFieldShape const *() const {
+    return nullptr;
+  }
+  virtual operator hkpCompressedSampledHeightFieldShape const *() const {
+    return nullptr;
+  }
+  virtual operator hkpTriSampledHeightFieldCollection const *() const {
+    return nullptr;
+  }
+  virtual operator hkpTriSampledHeightFieldBvTreeShape const *() const {
+    return nullptr;
+  }
   virtual operator hkpMoppCode const *() const { return nullptr; }
   virtual operator hkpMoppBvTreeShape const *() const { return nullptr; }
   virtual operator hkpStaticCompoundShape const *() const { return nullptr; }

@@ -43,6 +43,75 @@ struct hkpShapeInternalInterface : hkpShape, hkVirtualClass {
   static IhkVirtualClass *Create(CRule rule);
 };
 
+struct hkpSampledHeightFieldShapeInternalInterface
+    : hkpSampledHeightFieldShape, hkVirtualClass {
+  hkpSampledHeightFieldShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
+  operator hkpSampledHeightFieldShape const *() const override { return this; }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
+struct hkpStorageSampledHeightFieldShapeInternalInterface
+    : hkpStorageSampledHeightFieldShape, hkVirtualClass {
+  hkpStorageSampledHeightFieldShapeInternalInterface() {
+    AddHash(hkpSampledHeightFieldShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
+  operator hkpStorageSampledHeightFieldShape const *() const override {
+    return this;
+  }
+  operator hkpSampledHeightFieldShape const *() const override { return this; }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
+struct hkpCompressedSampledHeightFieldShapeInternalInterface
+    : hkpCompressedSampledHeightFieldShape, hkVirtualClass {
+  hkpCompressedSampledHeightFieldShapeInternalInterface() {
+    AddHash(hkpSampledHeightFieldShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
+  operator hkpCompressedSampledHeightFieldShape const *() const override {
+    return this;
+  }
+  operator hkpSampledHeightFieldShape const *() const override { return this; }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK550 ? "hkpStorageSampledHeightFieldShape"
+                            : "hkpCompressedSampledHeightFieldShape";
+  }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
+struct hkpTriSampledHeightFieldCollectionInternalInterface
+    : hkpTriSampledHeightFieldCollection, hkVirtualClass {
+  hkpTriSampledHeightFieldCollectionInternalInterface() {
+    AddHash(hkpShape::GetHash());
+  }
+  operator hkpTriSampledHeightFieldCollection const *() const override {
+    return this;
+  }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
+struct hkpTriSampledHeightFieldBvTreeShapeInternalInterface
+    : hkpTriSampledHeightFieldBvTreeShape, hkVirtualClass {
+  hkpTriSampledHeightFieldBvTreeShapeInternalInterface() {
+    AddHash(hkpShape::GetHash());
+  }
+  operator hkpTriSampledHeightFieldBvTreeShape const *() const override {
+    return this;
+  }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
 struct hkpMoppCodeInternalInterface : hkpMoppCode, hkVirtualClass {
   operator hkpMoppCode const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }

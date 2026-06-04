@@ -23,6 +23,7 @@
 struct hkpPhysicsSystem;
 struct hkpRigidBody;
 struct hkpShape;
+struct hkpSampledHeightFieldShape;
 struct hkpMoppCode;
 struct hkpStaticCompoundShape;
 struct hkpStorageExtendedMeshShapeMeshSubpartStorage;
@@ -125,6 +126,51 @@ struct hkpRigidBody : IhkVirtualClass {
 struct hkpShape : IhkVirtualClass {
   DECLARE_HKCLASS(hkpShape)
   virtual uint32 GetShapeType() const = 0;
+};
+
+struct hkpSampledHeightFieldShape : hkpShape {
+  DECLARE_HKCLASS(hkpSampledHeightFieldShape)
+
+  virtual uint32 GetXRes() const = 0;
+  virtual uint32 GetZRes() const = 0;
+  virtual float GetHeightCenter() const = 0;
+  virtual bool GetUseProjectionBasedHeight() const = 0;
+  virtual Vector4A16 GetIntToFloatScale() const = 0;
+  virtual Vector4A16 GetFloatToIntScale() const = 0;
+  virtual Vector4A16 GetFloatToIntOffsetFloorCorrected() const = 0;
+  virtual Vector4A16 GetExtents() const = 0;
+  virtual bool GetTriangleFlip() const = 0;
+  virtual size_t GetNumHeights() const = 0;
+  virtual float GetHeight(size_t id) const = 0;
+};
+
+struct hkpStorageSampledHeightFieldShape : hkpSampledHeightFieldShape {
+  DECLARE_HKCLASS(hkpStorageSampledHeightFieldShape)
+
+  virtual const float *GetStorage() const = 0;
+};
+
+struct hkpCompressedSampledHeightFieldShape : hkpSampledHeightFieldShape {
+  DECLARE_HKCLASS(hkpCompressedSampledHeightFieldShape)
+
+  virtual const uint16 *GetStorage() const = 0;
+  virtual float GetOffset() const = 0;
+  virtual float GetScale() const = 0;
+};
+
+struct hkpTriSampledHeightFieldCollection : hkpShape {
+  DECLARE_HKCLASS(hkpTriSampledHeightFieldCollection)
+
+  virtual bool GetDisableWelding() const = 0;
+  virtual const hkpSampledHeightFieldShape *GetHeightField() const = 0;
+  virtual float GetRadius() const = 0;
+};
+
+struct hkpTriSampledHeightFieldBvTreeShape : hkpShape {
+  DECLARE_HKCLASS(hkpTriSampledHeightFieldBvTreeShape)
+
+  virtual const hkpTriSampledHeightFieldCollection *GetChildShape() const = 0;
+  virtual bool GetWantAabbRejectionTest() const = 0;
 };
 
 struct hkpMoppCode : IhkVirtualClass {

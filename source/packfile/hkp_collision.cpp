@@ -423,6 +423,28 @@ uint8 RuntimeQualityType(hkToolset version, const char *data, size_t offset,
 
 size_t ConvexRadiusOffset() { return 16; }
 
+size_t SampledHeightFieldStorageOffset() { return 96; }
+
+size_t SampledHeightFieldTriangleFlipOffset(uint8 x64) {
+  return SampledHeightFieldStorageOffset() + ArrayStorageSize(x64);
+}
+
+size_t CompressedHeightFieldOffsetOffset(uint8 x64) {
+  return AlignOffset(SampledHeightFieldTriangleFlipOffset(x64) + 1, 4);
+}
+
+size_t StorageHeightFieldFixedSize(uint8 x64) { return x64 ? 128 : 112; }
+
+size_t CompressedHeightFieldFixedSize(uint8) { return 128; }
+
+size_t TriHeightFieldCollectionFixedSize(hkToolset version) {
+  return version == HK550 ? 32 : 64;
+}
+
+size_t TriHeightFieldCollectionHeightFieldOffset(uint8) { return 20; }
+
+size_t TriHeightFieldBvTreeChildOffset(uint8) { return 16; }
+
 size_t ConvexVerticesArrayOffset() { return 64; }
 
 size_t ConvexVerticesNumVerticesOffset(uint8 x64) {
@@ -934,6 +956,8 @@ void SaveValueArray(BinWritterRef_e wr, hkFixups &fixups, size_t objectBegin,
     WriteValueArray<uint32>(wr, data, count);
   } else if (elementSize == sizeof(uint64)) {
     WriteValueArray<uint64>(wr, data, count);
+  } else if (elementSize == sizeof(float)) {
+    WriteValueArray<float>(wr, data, count);
   } else if (elementSize == sizeof(Vector4A16)) {
     WriteValueArray<Vector4A16>(wr, data, count);
   } else {
@@ -2437,6 +2461,125 @@ struct hkpShapeSaver : HkpSaver<hkpShape> {
   }
 };
 
+template <class C> struct hkpSampledHeightFieldSaverBase : HkpSaver<C> {
+  using HkpSaver<C>::HkpSaver;
+
+  void WriteCommon(std::vector<char> &fixed) const {
+    WriteField<uint32>(fixed, 12, this->in->GetShapeType());
+    WriteField<uint32>(fixed, 16, this->in->GetXRes());
+    WriteField<uint32>(fixed, 20, this->in->GetZRes());
+    WriteField<float>(fixed, 24, this->in->GetHeightCenter());
+    WriteField<uint8>(fixed, 28,
+                      this->in->GetUseProjectionBasedHeight() ? 1 : 0);
+    if (this->rule.version != HK550) {
+      WriteField<uint8>(fixed, 29, std::is_same_v<C, hkpCompressedSampledHeightFieldShape>
+                                       ? 1
+                                       : 0);
+    }
+    WriteVectorField(fixed, 32, this->in->GetIntToFloatScale());
+    WriteVectorField(fixed, 48, this->in->GetFloatToIntScale());
+    WriteVectorField(fixed, 64,
+                     this->in->GetFloatToIntOffsetFloorCorrected());
+    WriteVectorField(fixed, 80, this->in->GetExtents());
+    WriteField<uint8>(fixed, SampledHeightFieldTriangleFlipOffset(false),
+                      this->in->GetTriangleFlip() ? 1 : 0);
+  }
+};
+
+struct hkpSampledHeightFieldShapeSaver
+    : hkpSampledHeightFieldSaverBase<hkpSampledHeightFieldShape> {
+  using hkpSampledHeightFieldSaverBase::hkpSampledHeightFieldSaverBase;
+
+  void Save(BinWritterRef_e wr, hkFixups &) const {
+    auto fixed = this->Fixed(SampledHeightFieldStorageOffset());
+    this->WriteCommon(fixed);
+    WriteBuffer(wr, fixed);
+  }
+};
+
+struct hkpStorageSampledHeightFieldShapeSaver
+    : hkpSampledHeightFieldSaverBase<hkpSampledHeightFieldShape> {
+  using hkpSampledHeightFieldSaverBase::hkpSampledHeightFieldSaverBase;
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const {
+    std::vector<float> heights(this->in->GetNumHeights());
+    for (size_t i = 0; i < heights.size(); i++) {
+      heights[i] = this->in->GetHeight(i);
+    }
+
+    auto fixed = this->Fixed(StorageHeightFieldFixedSize(false));
+    this->WriteCommon(fixed);
+    WriteArrayHeader(fixed, SampledHeightFieldStorageOffset(),
+                     heights.size(), this->rule.version);
+
+    const size_t begin = wr.Tell();
+    WriteBuffer(wr, fixed);
+    SaveValueArray(wr, fixups, begin, SampledHeightFieldStorageOffset(),
+                   heights.data(), heights.size(), sizeof(float));
+  }
+};
+
+struct hkpCompressedSampledHeightFieldShapeSaver
+    : hkpSampledHeightFieldSaverBase<hkpCompressedSampledHeightFieldShape> {
+  using hkpSampledHeightFieldSaverBase::hkpSampledHeightFieldSaverBase;
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const {
+    auto fixed = this->Fixed(CompressedHeightFieldFixedSize(false));
+    this->WriteCommon(fixed);
+    WriteArrayHeader(fixed, SampledHeightFieldStorageOffset(),
+                     this->in->GetNumHeights(), this->rule.version);
+    WriteField<float>(fixed, CompressedHeightFieldOffsetOffset(false),
+                      this->in->GetOffset());
+    WriteField<float>(fixed, CompressedHeightFieldOffsetOffset(false) + 4,
+                      this->in->GetScale());
+
+    const size_t begin = wr.Tell();
+    WriteBuffer(wr, fixed);
+    SaveValueArray(wr, fixups, begin, SampledHeightFieldStorageOffset(),
+                   this->in->GetStorage(), this->in->GetNumHeights(),
+                   sizeof(uint16));
+  }
+};
+
+struct hkpTriSampledHeightFieldCollectionSaver
+    : HkpSaver<hkpTriSampledHeightFieldCollection> {
+  using HkpSaver::HkpSaver;
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const {
+    auto fixed = Fixed(TriHeightFieldCollectionFixedSize(rule.version));
+    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteField<uint8>(fixed, 16, in->GetDisableWelding() ? 1 : 0);
+    WriteField<uint8>(fixed, 17, 2);
+    WriteField<float>(fixed, 28, in->GetRadius());
+
+    const size_t begin = wr.Tell();
+    WriteBuffer(wr, fixed);
+    if (in->GetHeightField()) {
+      fixups.locals.emplace_back(
+          begin + TriHeightFieldCollectionHeightFieldOffset(false),
+          in->GetHeightField());
+    }
+  }
+};
+
+struct hkpTriSampledHeightFieldBvTreeShapeSaver
+    : HkpSaver<hkpTriSampledHeightFieldBvTreeShape> {
+  using HkpSaver::HkpSaver;
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const {
+    auto fixed = Fixed(32);
+    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteField<uint8>(fixed, 24, in->GetWantAabbRejectionTest() ? 1 : 0);
+
+    const size_t begin = wr.Tell();
+    WriteBuffer(wr, fixed);
+    if (in->GetChildShape()) {
+      fixups.locals.emplace_back(begin + TriHeightFieldBvTreeChildOffset(false),
+                                 in->GetChildShape());
+    }
+  }
+};
+
 struct hkpMoppCodeSaver : HkpSaver<hkpMoppCode> {
   using HkpSaver::HkpSaver;
 
@@ -3641,6 +3784,242 @@ struct hkpShapeMidInterface : hkpMidBase<hkpShapeInternalInterface> {
   }
 };
 
+template <class C> struct hkpSampledHeightFieldMidBase : hkpMidBase<C> {
+  using Base = hkpMidBase<C>;
+  using Base::Base;
+
+  uint32 GetShapeType() const override {
+    return ReadValue<uint32>(this->data, 12, this->DataNeedsEndianSwap());
+  }
+  uint32 GetXRes() const override {
+    return ReadValue<uint32>(this->data, 16, this->DataNeedsEndianSwap());
+  }
+  uint32 GetZRes() const override {
+    return ReadValue<uint32>(this->data, 20, this->DataNeedsEndianSwap());
+  }
+  float GetHeightCenter() const override {
+    return ReadValue<float>(this->data, 24, this->DataNeedsEndianSwap());
+  }
+  bool GetUseProjectionBasedHeight() const override {
+    return ReadValue<uint8>(this->data, 28) != 0;
+  }
+  Vector4A16 GetIntToFloatScale() const override {
+    return ReadValue<Vector4A16>(this->data, 32, this->DataNeedsEndianSwap());
+  }
+  Vector4A16 GetFloatToIntScale() const override {
+    return ReadValue<Vector4A16>(this->data, 48, this->DataNeedsEndianSwap());
+  }
+  Vector4A16 GetFloatToIntOffsetFloorCorrected() const override {
+    return ReadValue<Vector4A16>(this->data, 64, this->DataNeedsEndianSwap());
+  }
+  Vector4A16 GetExtents() const override {
+    return ReadValue<Vector4A16>(this->data, 80, this->DataNeedsEndianSwap());
+  }
+  bool GetTriangleFlip() const override {
+    return ReadValue<uint8>(
+               this->data,
+               SampledHeightFieldTriangleFlipOffset(this->rule.x64)) != 0;
+  }
+  size_t GetNumHeights() const override { return 0; }
+  float GetHeight(size_t) const override { return 0.0f; }
+};
+
+struct hkpSampledHeightFieldShapeMidInterface
+    : hkpSampledHeightFieldMidBase<
+          hkpSampledHeightFieldShapeInternalInterface> {
+  using Base =
+      hkpSampledHeightFieldMidBase<hkpSampledHeightFieldShapeInternalInterface>;
+  using Base::Base;
+  std::unique_ptr<hkpSampledHeightFieldShapeSaver> saver;
+
+  void Reflect(const IhkVirtualClass *other) override {
+    saver = std::make_unique<hkpSampledHeightFieldShapeSaver>(
+        this->rule, checked_deref_cast<const hkpSampledHeightFieldShape>(other));
+  }
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    saver->Save(wr, fixups);
+  }
+};
+
+struct hkpStorageSampledHeightFieldShapeMidInterface
+    : hkpSampledHeightFieldMidBase<
+          hkpStorageSampledHeightFieldShapeInternalInterface> {
+  using Base = hkpSampledHeightFieldMidBase<
+      hkpStorageSampledHeightFieldShapeInternalInterface>;
+  using Base::Base;
+  std::unique_ptr<hkpStorageSampledHeightFieldShapeSaver> saver;
+  mutable const float *cachedSource = nullptr;
+  mutable std::vector<float> cachedStorage;
+
+  ArrayViewWithMode GetStorageArray() const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        this->data, SampledHeightFieldStorageOffset(), this->rule.x64,
+        this->DataNeedsEndianSwap(), 1u << 28);
+    if (!ArrayViewCoveredByHeader(values, sizeof(float), this->header)) {
+      return {};
+    }
+    return values;
+  }
+  size_t GetNumHeights() const override {
+    return GetStorageArray().view.count;
+  }
+  const float *GetStorage() const override {
+    const auto values = GetStorageArray();
+    const auto *raw = reinterpret_cast<const float *>(values.view.data);
+    if (!raw || !values.swapEndian) {
+      return raw;
+    }
+    if (cachedSource != raw || cachedStorage.size() != values.view.count) {
+      cachedSource = raw;
+      cachedStorage.assign(raw, raw + values.view.count);
+      for (auto &value : cachedStorage) {
+        value = ByteSwapFloat(value);
+      }
+    }
+    return cachedStorage.data();
+  }
+  float GetHeight(size_t id) const override {
+    const float *values = GetStorage();
+    return values && id < GetNumHeights() ? values[id] : 0.0f;
+  }
+  void Reflect(const IhkVirtualClass *other) override {
+    saver = std::make_unique<hkpStorageSampledHeightFieldShapeSaver>(
+        this->rule, checked_deref_cast<const hkpSampledHeightFieldShape>(other));
+  }
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    saver->Save(wr, fixups);
+  }
+};
+
+struct hkpCompressedSampledHeightFieldShapeMidInterface
+    : hkpSampledHeightFieldMidBase<
+          hkpCompressedSampledHeightFieldShapeInternalInterface> {
+  using Base = hkpSampledHeightFieldMidBase<
+      hkpCompressedSampledHeightFieldShapeInternalInterface>;
+  using Base::Base;
+  std::unique_ptr<hkpCompressedSampledHeightFieldShapeSaver> saver;
+  mutable const uint16 *cachedSource = nullptr;
+  mutable std::vector<uint16> cachedStorage;
+
+  ArrayViewWithMode GetStorageArray() const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        this->data, SampledHeightFieldStorageOffset(), this->rule.x64,
+        this->DataNeedsEndianSwap(), 1u << 28);
+    if (!ArrayViewCoveredByHeader(values, sizeof(uint16), this->header)) {
+      return {};
+    }
+    return values;
+  }
+  size_t GetNumHeights() const override {
+    return GetStorageArray().view.count;
+  }
+  const uint16 *GetStorage() const override {
+    const auto values = GetStorageArray();
+    const auto *raw = reinterpret_cast<const uint16 *>(values.view.data);
+    if (!raw || !values.swapEndian) {
+      return raw;
+    }
+    if (cachedSource != raw || cachedStorage.size() != values.view.count) {
+      cachedSource = raw;
+      cachedStorage.assign(raw, raw + values.view.count);
+      for (auto &value : cachedStorage) {
+        value = ByteSwap16(value);
+      }
+    }
+    return cachedStorage.data();
+  }
+  float GetOffset() const override {
+    return ReadValue<float>(this->data,
+                            CompressedHeightFieldOffsetOffset(this->rule.x64),
+                            this->DataNeedsEndianSwap());
+  }
+  float GetScale() const override {
+    return ReadValue<float>(
+        this->data, CompressedHeightFieldOffsetOffset(this->rule.x64) + 4,
+        this->DataNeedsEndianSwap());
+  }
+  float GetHeight(size_t id) const override {
+    const uint16 *values = GetStorage();
+    return values && id < GetNumHeights()
+               ? GetScale() * static_cast<float>(values[id]) + GetOffset()
+               : 0.0f;
+  }
+  void Reflect(const IhkVirtualClass *other) override {
+    saver = std::make_unique<hkpCompressedSampledHeightFieldShapeSaver>(
+        this->rule,
+        checked_deref_cast<const hkpCompressedSampledHeightFieldShape>(other));
+  }
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    saver->Save(wr, fixups);
+  }
+};
+
+struct hkpTriSampledHeightFieldCollectionMidInterface
+    : hkpMidBase<hkpTriSampledHeightFieldCollectionInternalInterface> {
+  using Base = hkpMidBase<hkpTriSampledHeightFieldCollectionInternalInterface>;
+  using Base::Base;
+  std::unique_ptr<hkpTriSampledHeightFieldCollectionSaver> saver;
+
+  uint32 GetShapeType() const override {
+    return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
+  }
+  bool GetDisableWelding() const override {
+    return ReadValue<uint8>(data, 16) != 0;
+  }
+  const hkpSampledHeightFieldShape *GetHeightField() const override {
+    const void *ptr = ReadPointer<char>(
+        data, TriHeightFieldCollectionHeightFieldOffset(this->rule.x64),
+        this->rule.x64);
+    if (!PointerCoveredByHeader(this->header, ptr, 1)) {
+      return nullptr;
+    }
+    return safe_deref_cast<const hkpSampledHeightFieldShape>(
+        this->header->GetClass(ptr));
+  }
+  float GetRadius() const override {
+    return ReadValue<float>(data, 28, this->DataNeedsEndianSwap());
+  }
+  void Reflect(const IhkVirtualClass *other) override {
+    saver = std::make_unique<hkpTriSampledHeightFieldCollectionSaver>(
+        this->rule,
+        checked_deref_cast<const hkpTriSampledHeightFieldCollection>(other));
+  }
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    saver->Save(wr, fixups);
+  }
+};
+
+struct hkpTriSampledHeightFieldBvTreeShapeMidInterface
+    : hkpMidBase<hkpTriSampledHeightFieldBvTreeShapeInternalInterface> {
+  using Base = hkpMidBase<hkpTriSampledHeightFieldBvTreeShapeInternalInterface>;
+  using Base::Base;
+  std::unique_ptr<hkpTriSampledHeightFieldBvTreeShapeSaver> saver;
+
+  uint32 GetShapeType() const override {
+    return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
+  }
+  const hkpTriSampledHeightFieldCollection *GetChildShape() const override {
+    const void *ptr = ReadPointer<char>(
+        data, TriHeightFieldBvTreeChildOffset(this->rule.x64), this->rule.x64);
+    if (!PointerCoveredByHeader(this->header, ptr, 1)) {
+      return nullptr;
+    }
+    return safe_deref_cast<const hkpTriSampledHeightFieldCollection>(
+        this->header->GetClass(ptr));
+  }
+  bool GetWantAabbRejectionTest() const override {
+    return ReadValue<uint8>(data, 24) != 0;
+  }
+  void Reflect(const IhkVirtualClass *other) override {
+    saver = std::make_unique<hkpTriSampledHeightFieldBvTreeShapeSaver>(
+        this->rule,
+        checked_deref_cast<const hkpTriSampledHeightFieldBvTreeShape>(other));
+  }
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    saver->Save(wr, fixups);
+  }
+};
+
 struct hkpMoppCodeMidInterface : hkpMidBase<hkpMoppCodeInternalInterface> {
   using Base = hkpMidBase<hkpMoppCodeInternalInterface>;
   using Base::Base;
@@ -4560,6 +4939,30 @@ IhkVirtualClass *hkpRigidBodyInternalInterface::Create(CRule rule) {
 
 IhkVirtualClass *hkpShapeInternalInterface::Create(CRule rule) {
   return new hkpShapeMidInterface{rule};
+}
+
+IhkVirtualClass *hkpSampledHeightFieldShapeInternalInterface::Create(CRule rule) {
+  return new hkpSampledHeightFieldShapeMidInterface{rule};
+}
+
+IhkVirtualClass *
+hkpStorageSampledHeightFieldShapeInternalInterface::Create(CRule rule) {
+  return new hkpStorageSampledHeightFieldShapeMidInterface{rule};
+}
+
+IhkVirtualClass *
+hkpCompressedSampledHeightFieldShapeInternalInterface::Create(CRule rule) {
+  return new hkpCompressedSampledHeightFieldShapeMidInterface{rule};
+}
+
+IhkVirtualClass *
+hkpTriSampledHeightFieldCollectionInternalInterface::Create(CRule rule) {
+  return new hkpTriSampledHeightFieldCollectionMidInterface{rule};
+}
+
+IhkVirtualClass *
+hkpTriSampledHeightFieldBvTreeShapeInternalInterface::Create(CRule rule) {
+  return new hkpTriSampledHeightFieldBvTreeShapeMidInterface{rule};
 }
 
 IhkVirtualClass *hkpMoppCodeInternalInterface::Create(CRule rule) {

@@ -533,6 +533,9 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkpPropertyValue", 0xC75925AA},
           {"hkpCdBody", 0xE94D2688},
           {"hkpShape", 0x666490A1},
+          {"hkpStorageSampledHeightFieldShape", 0x5AA633E0},
+          {"hkpTriSampledHeightFieldBvTreeShape", 0x8C608221},
+          {"hkpTriSampledHeightFieldCollection", 0xCB2ECF39},
           {"hkpCollidableBoundingVolumeData", 0x97B45527},
           {"hkpMotion", 0x141ABDC9},
           {"hkpConvexListFilter", 0x81D074A4},
@@ -567,6 +570,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkpStorageExtendedMeshShape", 0xB469EFBC},
           {"hkpStorageExtendedMeshShapeMeshSubpartStorage", 0x5AAD4DE6},
           {"hkpBoxShape", 0x3444D2D5},
+          {"hkpCompressedSampledHeightFieldShape", 0x97B6E143},
       };
 
       for (auto &sig : signatures) {
@@ -715,6 +719,9 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "hkpCdBody",
         "hkBaseObject",
         "hkpShape",
+        "hkpStorageSampledHeightFieldShape",
+        "hkpTriSampledHeightFieldBvTreeShape",
+        "hkpTriSampledHeightFieldCollection",
         "hkpExtendedMeshShapeShapesSubpart",
         "hkpCollidableBoundingVolumeData",
         "hkpConstraintData",
@@ -752,6 +759,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "hkpStorageExtendedMeshShape",
         "hkpStorageExtendedMeshShapeMeshSubpartStorage",
         "hkpBoxShape",
+        "hkpCompressedSampledHeightFieldShape",
     };
     writeOldClassNames(hk2010CollisionClassNames);
   }
@@ -831,7 +839,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     }
 
     if (toolset < HK700) {
-      if (auto root = dynamic_cast<const hkRootLevelContainer *>(c.get())) {
+      if (auto root = safe_deref_cast<const hkRootLevelContainer>(c.get())) {
         for (auto &variant : *root) {
           if (variant.pointer ||
               std::string_view(variant.className) != "hkxScene") {
@@ -891,6 +899,24 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
       if (const auto *mopp = safe_deref_cast<const hkpMoppBvTreeShape>(shape)) {
         appendSourceClass(mopp->GetCode());
         self(mopp->GetChildShape(), self);
+        return;
+      }
+
+      if (const auto *tree =
+              safe_deref_cast<const hkpTriSampledHeightFieldBvTreeShape>(
+                  shape)) {
+        const auto *collection = tree->GetChildShape();
+        appendSourceClass(collection);
+        if (collection) {
+          self(collection->GetHeightField(), self);
+        }
+        return;
+      }
+
+      if (const auto *collection =
+              safe_deref_cast<const hkpTriSampledHeightFieldCollection>(
+                  shape)) {
+        self(collection->GetHeightField(), self);
         return;
       }
 

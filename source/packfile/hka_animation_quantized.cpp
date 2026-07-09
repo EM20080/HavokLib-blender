@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -150,6 +151,41 @@ inline void InitPoseFromSkeleton(std::vector<hkQTransform> &pose,
   }
 }
 
+inline Vector4A16 LerpVec(const Vector4A16 &a, const Vector4A16 &b,
+                          float delta) {
+  return a + (b - a) * delta;
+}
+
+inline Vector4A16 SlerpQuat(const Vector4A16 &a, const Vector4A16 &b,
+                            float delta) {
+  Vector4A16 end = b;
+  float dot = a.Dot(end);
+
+  if (dot < 0.0f) {
+    end *= -1.0f;
+    dot *= -1.0f;
+  }
+
+  constexpr float threshold = 0.9995f;
+  if (dot > threshold) {
+    return (a + (end - a) * delta).Normalize();
+  }
+
+  dot = std::clamp(dot, -1.0f, 1.0f);
+  const float theta0 = std::acos(dot);
+  const float theta = theta0 * delta;
+  const float sinTheta = std::sin(theta);
+  const float sinTheta0 = std::sin(theta0);
+
+  if (sinTheta0 == 0.0f) {
+    return a;
+  }
+
+  const float s0 = std::cos(theta) - dot * sinTheta / sinTheta0;
+  const float s1 = sinTheta / sinTheta0;
+  return (a * s0) + (end * s1);
+}
+
 inline void AssignScalar(std::vector<hkQTransform> &pose, uint16 element,
                          float value) {
   if (pose.empty()) {
@@ -245,6 +281,9 @@ struct hkaQuantizedAnimationMidInterface
   std::vector<float> dynamicScalarMins;
   std::vector<float> dynamicScalarSpans;
   std::vector<int32> trackToBone;
+  std::vector<size_t> trackToPoseIndex;
+  std::vector<uint8> boneWeights;
+  std::vector<uint8> floatWeights;
   std::vector<uint8> scaleElementMask;
   bool hasTrackMap = false;
 
@@ -285,8 +324,13 @@ struct hkaQuantizedAnimationMidInterface
     bigEndian = interface.Endian() != 0;
     valid = false;
     cachedFrame = -1;
+    staticPose.clear();
+    frameCache.clear();
+    trackToPoseIndex.clear();
+    boneWeights.clear();
+    floatWeights.clear();
+    scaleElementMask.clear();
 
-    const size_t numTracks = GetNumOfTransformTracks();
     const hkaSkeleton *sampleSkeleton = referenceSkeleton;
 
     if (!sampleSkeleton && interface.Skeleton() && this->header) {
@@ -294,21 +338,53 @@ struct hkaQuantizedAnimationMidInterface
           this->header->GetClass(interface.Skeleton()));
     }
 
-    staticPose.resize(numTracks);
-    frameCache.resize(numTracks);
-    scaleElementMask.assign(numTracks, 0);
-    InitPoseFromSkeleton(staticPose, sampleSkeleton);
-    InitPose(frameCache);
-    BuildTrackMap(sampleSkeleton);
-
     if (!data || dataSize < sizeof(QuantizedAnimationHeader)) {
       return;
     }
 
     quantHeader = ReadHeader(data, bigEndian);
 
-    if (!quantHeader.frameSize || !quantHeader.numFrames) {
+    if (!quantHeader.headerSize || !quantHeader.frameSize ||
+        quantHeader.numFrames < 1 || quantHeader.numBones < 1 ||
+        quantHeader.headerSize > dataSize) {
       return;
+    }
+
+    const size_t poseBoneCount = quantHeader.numBones;
+    staticPose.resize(poseBoneCount);
+    frameCache.resize(poseBoneCount);
+    scaleElementMask.assign(poseBoneCount, 0);
+    InitPoseFromSkeleton(staticPose, sampleSkeleton);
+    InitPose(frameCache);
+    BuildTrackMap(sampleSkeleton);
+
+    const size_t weightOffset = sizeof(QuantizedAnimationHeader);
+    const size_t weightCount = static_cast<size_t>(quantHeader.numBones) +
+                               static_cast<size_t>(quantHeader.numFloats);
+    if (weightOffset + weightCount <= dataSize) {
+      boneWeights.assign(reinterpret_cast<const uint8 *>(data + weightOffset),
+                         reinterpret_cast<const uint8 *>(data + weightOffset +
+                                                          quantHeader.numBones));
+      floatWeights.assign(reinterpret_cast<const uint8 *>(data + weightOffset +
+                                                           quantHeader.numBones),
+                          reinterpret_cast<const uint8 *>(data + weightOffset +
+                                                           weightCount));
+    } else {
+      boneWeights.assign(poseBoneCount, 0xff);
+      floatWeights.assign(quantHeader.numFloats, 0xff);
+    }
+
+    trackToPoseIndex.clear();
+    trackToPoseIndex.reserve(poseBoneCount);
+    for (size_t i = 0; i < boneWeights.size(); i++) {
+      if (boneWeights[i] != 0) {
+        trackToPoseIndex.push_back(i);
+      }
+    }
+    if (trackToPoseIndex.empty()) {
+      for (size_t i = 0; i < poseBoneCount; i++) {
+        trackToPoseIndex.push_back(i);
+      }
     }
 
     const size_t dynamicElementCount = static_cast<size_t>(
@@ -325,15 +401,14 @@ struct hkaQuantizedAnimationMidInterface
             dataSize ||
         quantHeader.staticValuesOffset > dataSize ||
         quantHeader.dynamicRangeMinimumsOffset > dataSize ||
-        quantHeader.dynamicRangeSpansOffset > dataSize ||
-        quantHeader.headerSize > dataSize) {
+        quantHeader.dynamicRangeSpansOffset > dataSize) {
       return;
     }
 
     const size_t numStaticScalars = static_cast<size_t>(
-        quantHeader.numStaticTranslations + quantHeader.numStaticScales +
-        quantHeader.numStaticFloats);
+        quantHeader.numStaticTranslations + quantHeader.numStaticScales);
     const size_t numStaticRotations = quantHeader.numStaticRotations;
+    const size_t numStaticFloats = quantHeader.numStaticFloats;
 
     std::vector<uint16> staticElements(staticElementCount);
     for (size_t i = 0; i < staticElementCount; i++) {
@@ -367,10 +442,15 @@ struct hkaQuantizedAnimationMidInterface
       AssignRotation(staticPose, staticElements[numStaticScalars + i], rot);
     }
 
+    // Static float values are intentionally skipped here because MotionTrack
+    // users only request transform tracks. Keep the byte-layout handling above
+    // matching Havok's order so transform offsets remain correct.
+    (void)numStaticFloats;
+
     numDynamicScalars = static_cast<size_t>(quantHeader.numDynamicTranslations +
-                                            quantHeader.numDynamicScales +
-                                            quantHeader.numDynamicFloats);
+                                            quantHeader.numDynamicScales);
     numDynamicRotations = quantHeader.numDynamicRotations;
+    const size_t numDynamicFloats = quantHeader.numDynamicFloats;
     dynamicScalarElements.resize(numDynamicScalars);
     dynamicRotationElements.resize(numDynamicRotations);
     dynamicScalarMins.resize(numDynamicScalars);
@@ -407,13 +487,15 @@ struct hkaQuantizedAnimationMidInterface
       dynamicScalarSpans[i] = ReadF32(data + spanOffset, bigEndian);
     }
 
+    (void)numDynamicFloats;
+
     ApplyUniformScaleTracks(staticPose);
     frameCache = staticPose;
     cachedFrame = -1;
 
     numFrames = quantHeader.numFrames;
-    if (Duration() > 0.0f) {
-      frameRate = static_cast<uint32>(numFrames / Duration());
+    if (Duration() > 0.0f && numFrames > 1) {
+      frameRate = static_cast<uint32>(std::lround((numFrames - 1) / Duration()));
     } else {
       frameRate = 0;
     }
@@ -479,6 +561,13 @@ struct hkaQuantizedAnimationMidInterface
     }
   }
 
+  size_t PoseIndexForTrack(size_t trackID) const {
+    if (trackID < trackToPoseIndex.size()) {
+      return trackToPoseIndex[trackID];
+    }
+    return trackID;
+  }
+
   size_t BoneIndex(size_t trackID) const override {
     if (trackID < trackToBone.size()) {
       const int32 mapped = trackToBone[trackID];
@@ -486,7 +575,9 @@ struct hkaQuantizedAnimationMidInterface
         return static_cast<size_t>(mapped);
       }
     }
-    return trackID;
+
+    const size_t poseIndex = PoseIndexForTrack(trackID);
+    return poseIndex;
   }
 
   void MarkScaleElement(uint16 element) {
@@ -536,7 +627,6 @@ struct hkaQuantizedAnimationMidInterface
     const size_t frameEnd = std::min(dataSize, frameStart + quantHeader.frameSize);
     const char *frameData = data + frameStart;
 
-    const float fractal = 1.0f / 65535.0f;
     const char *current = frameData;
 
     for (size_t i = 0; i < numDynamicScalars; i++) {
@@ -548,7 +638,7 @@ struct hkaQuantizedAnimationMidInterface
       current += 2;
 
       const float value =
-          dynamicScalarMins[i] + dynamicScalarSpans[i] * (quantized * fractal);
+          dynamicScalarMins[i] + dynamicScalarSpans[i] * quantized;
       AssignScalar(frameCache, dynamicScalarElements[i], value);
     }
 
@@ -566,7 +656,8 @@ struct hkaQuantizedAnimationMidInterface
   }
 
   void GetFrame(size_t trackID, int32 frame, hkQTransform &out) const override {
-    if (trackID >= frameCache.size()) [[unlikely]] {
+    const size_t poseIndex = PoseIndexForTrack(trackID);
+    if (poseIndex >= frameCache.size()) [[unlikely]] {
       out.translation = Vector4A16(0.0f);
       out.rotation = Vector4A16(0.0f, 0.0f, 0.0f, 1.0f);
       out.scale = Vector4A16(1.0f, 1.0f, 1.0f, 0.0f);
@@ -574,7 +665,47 @@ struct hkaQuantizedAnimationMidInterface
     }
 
     DecodeFrame(frame);
-    out = frameCache[trackID];
+    out = frameCache[poseIndex];
+  }
+
+  void GetValue(uni::RTSValue &output, float time,
+                size_t trackID) const override {
+    if (!valid || numFrames < 2 || Duration() <= 0.0f) {
+      GetFrame(trackID, 0, output);
+      return;
+    }
+
+    const float maxFrame = static_cast<float>(numFrames - 1);
+    float frameFull = (time / Duration()) * maxFrame;
+    frameFull = std::clamp(frameFull, 0.0f, maxFrame);
+
+    int32 frame = static_cast<int32>(frameFull);
+    float delta = frameFull - static_cast<float>(frame);
+
+    if (frame >= static_cast<int32>(numFrames - 1)) {
+      frame = static_cast<int32>(numFrames - 1);
+      delta = 0.0f;
+    }
+
+    constexpr float frameStepTolerance = 1.0e-3f;
+    if (delta <= frameStepTolerance) {
+      GetFrame(trackID, frame, output);
+      return;
+    }
+
+    if (delta >= 1.0f - frameStepTolerance) {
+      GetFrame(trackID, frame + 1, output);
+      return;
+    }
+
+    hkQTransform start;
+    hkQTransform end;
+    GetFrame(trackID, frame, start);
+    GetFrame(trackID, frame + 1, end);
+
+    output.translation = LerpVec(start.translation, end.translation, delta);
+    output.rotation = SlerpQuat(start.rotation, end.rotation, delta);
+    output.scale = LerpVec(start.scale, end.scale, delta);
   }
 };
 

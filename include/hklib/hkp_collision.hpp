@@ -26,6 +26,7 @@ struct hkpShape;
 struct hkpSampledHeightFieldShape;
 struct hkpMoppCode;
 struct hkpStaticCompoundShape;
+struct hkpBvCompressedMeshShape;
 struct hkpStorageExtendedMeshShapeMeshSubpartStorage;
 struct hkpStorageExtendedMeshShapeShapeSubpartStorage;
 
@@ -203,6 +204,10 @@ struct hkpStaticCompoundShape : hkpShape {
 
   virtual size_t GetNumInstances() const = 0;
   virtual hkpStaticCompoundShapeInstance GetInstance(size_t id) const = 0;
+};
+
+struct hkpBvCompressedMeshShape : hkpShape {
+  DECLARE_HKCLASS(hkpBvCompressedMeshShape)
 };
 
 struct hkpStorageExtendedMeshShape : hkpShape {

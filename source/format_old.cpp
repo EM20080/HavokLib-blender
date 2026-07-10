@@ -595,6 +595,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkpRigidBody", 0xD0313594},
           {"hkpStaticCompoundShape", 0xE198603F},
           {"hkpBvCompressedMeshShape", 0x7A192C95},
+          {"hkpConvexVerticesShape", 0xFFAFC3AA},
           {"hkpMoppBvTreeShape", 0x96CE87D2},
           {"hkpMoppCode", 0x924C2661},
           {"hkpStorageExtendedMeshShape", 0x30C05D40},
@@ -746,8 +747,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     }
   }
 
-  if (collisionClassCount &&
-      (toolset == HK2010_2 || toolset == HK2012_2)) {
+  if (collisionClassCount && toolset == HK2010_2) {
     static const std::string_view hk2010CollisionClassNames[] = {
         "hkRootLevelContainer",
         "hkxScene",
@@ -762,6 +762,13 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "hkpCompressedSampledHeightFieldShape",
     };
     writeOldClassNames(hk2010CollisionClassNames);
+  }
+
+  if (collisionClassCount && toolset == HK2012_2) {
+    static const std::string_view hk2012CollisionClassNames[] = {
+        "hkRootLevelContainer",
+    };
+    writeOldClassNames(hk2012CollisionClassNames);
   }
 
   CRule rule(toolset, layout.reusePaddingOptimization,

@@ -57,7 +57,6 @@ static const std::map<JenHash, IhkVirtualClass *(*)(CRule)> hkConstrRegistry{
               hkpTriSampledHeightFieldCollection,
               hkpTriSampledHeightFieldBvTreeShape,
               hkpMoppCode, hkpMoppBvTreeShape, hkpStaticCompoundShape,
-              hkpBvCompressedMeshShape,
               hkpStorageExtendedMeshShape,
               hkpStorageExtendedMeshShapeMeshSubpartStorage,
               hkpStorageExtendedMeshShapeShapeSubpartStorage, hkpListShape,

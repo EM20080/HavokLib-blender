@@ -683,19 +683,6 @@ size_t ShapeSubpartFixedSize(hkToolset version) {
   }
 }
 
-size_t BvCompressedMeshShapeTreeOffset(CRule rule) {
-  if (rule.version == HK2010_2 || rule.version == HK2012_2) {
-    return rule.x64 ? static_cast<size_t>(-1) : 80;
-  }
-
-  return static_cast<size_t>(-1);
-}
-
-size_t BvCompressedMeshShapeTreeDomainOffset(CRule rule) {
-  const size_t tree = BvCompressedMeshShapeTreeOffset(rule);
-  return tree == static_cast<size_t>(-1) ? tree : tree + 16;
-}
-
 constexpr uint32 kLockedArrayCapacityMask = 0xc0000000u;
 constexpr size_t kCollisionPtrSize = 4;
 constexpr size_t kPhysicsDataFixedSize = 32;
@@ -1064,20 +1051,6 @@ Vector4A16 AddRadius(Vector4A16 halfExtents, float radius) {
   return halfExtents;
 }
 
-struct hkpRawCollisionBytes {
-  virtual const char *GetRawCollisionData() const = 0;
-  virtual CRule GetRawCollisionRule() const = 0;
-  virtual ~hkpRawCollisionBytes() = default;
-};
-
-const hkpRawCollisionBytes *RawCollision(const IhkVirtualClass *value) {
-  return dynamic_cast<const hkpRawCollisionBytes *>(value);
-}
-
-template <class C> const hkpRawCollisionBytes *RawCollision(const C *value) {
-  return dynamic_cast<const hkpRawCollisionBytes *>(value);
-}
-
 void AddShapeAabb(const hkpShape *shape, Bounds &bounds) {
   if (!shape) {
     return;
@@ -1115,22 +1088,6 @@ void AddShapeAabb(const hkpShape *shape, Bounds &bounds) {
       AddShapeAabb(list->GetChild(i), bounds);
     }
     return;
-  }
-
-  if (const auto *compressed =
-          safe_deref_cast<const hkpBvCompressedMeshShape>(shape)) {
-    if (const auto *raw = RawCollision(compressed)) {
-      const CRule rawRule = raw->GetRawCollisionRule();
-      const size_t domain = BvCompressedMeshShapeTreeDomainOffset(rawRule);
-      const char *data = raw->GetRawCollisionData();
-      if (data && domain != static_cast<size_t>(-1)) {
-        bounds.Add(ReadValue<Vector4A16>(data, domain,
-                                         ValueNeedsEndianSwap(compressed)));
-        bounds.Add(ReadValue<Vector4A16>(data, domain + sizeof(Vector4A16),
-                                         ValueNeedsEndianSwap(compressed)));
-        return;
-      }
-    }
   }
 
   if (const auto *translated =
@@ -2240,6 +2197,12 @@ std::unordered_map<const hkpMoppCode *, GeneratedMopp> &GeneratedMoppCode() {
 }
 }
 
+struct hkpRawCollisionBytes {
+  virtual const char *GetRawCollisionData() const = 0;
+  virtual CRule GetRawCollisionRule() const = 0;
+  virtual ~hkpRawCollisionBytes() = default;
+};
+
 template <class C> struct hkpMidBase : C, hkpRawCollisionBytes {
   char *data = nullptr;
 
@@ -2254,124 +2217,12 @@ template <class C> struct hkpMidBase : C, hkpRawCollisionBytes {
   auto DataNeedsEndianSwap() const { return RequiresEndianSwap(this->header); }
 };
 
-struct RawSerializedObject {
-  const hkxSectionHeader *section{};
-  const char *data{};
-  size_t offset{};
-  size_t size{};
-};
-
-RawSerializedObject FindRawSerializedObject(const IhkVirtualClass *value) {
-  const auto *rawClass = dynamic_cast<const hkVirtualClass *>(value);
-  if (!rawClass || !rawClass->header) {
-    return {};
-  }
-
-  const auto *oldHeader = dynamic_cast<const hkxHeader *>(rawClass->header);
-  const auto *raw = RawCollision(value);
-  const char *rawData = raw ? raw->GetRawCollisionData() : nullptr;
-  if (!oldHeader || !rawData) {
-    return {};
-  }
-
-  for (const auto &section : oldHeader->sections) {
-    const char *base = section.buffer.data();
-    const size_t length = section.buffer.size();
-    if (rawData < base || rawData >= base + length) {
-      continue;
-    }
-
-    const size_t offset = static_cast<size_t>(rawData - base);
-    size_t end = length;
-    for (const auto &fixup : section.rawVirtualFixups) {
-      if (fixup.dataoffset > static_cast<int32>(offset)) {
-        end = (std::min)(end, static_cast<size_t>(fixup.dataoffset));
-      }
-    }
-
-    if (end > offset) {
-      return {&section, rawData, offset, end - offset};
-    }
-  }
-
-  return {};
+const hkpRawCollisionBytes *RawCollision(const IhkVirtualClass *value) {
+  return dynamic_cast<const hkpRawCollisionBytes *>(value);
 }
 
-bool SaveRawSerializedObject(BinWritterRef_e wr, hkFixups &fixups,
-                             const IhkVirtualClass *value, CRule rule) {
-  const auto *raw = RawCollision(value);
-  if (!raw || raw->GetRawCollisionRule().version != rule.version ||
-      raw->GetRawCollisionRule().x64 != rule.x64 || rule.x64 ||
-      ValueNeedsEndianSwap(value)) {
-    return false;
-  }
-
-  const RawSerializedObject object = FindRawSerializedObject(value);
-  if (!object.data || !object.section || !object.size) {
-    return false;
-  }
-
-  std::vector<char> buffer(object.data, object.data + object.size);
-  const size_t begin = wr.Tell();
-
-  for (const auto &fixup : object.section->rawLocalFixups) {
-    if (fixup.pointer < static_cast<int32>(object.offset) ||
-        fixup.destination < static_cast<int32>(object.offset)) {
-      continue;
-    }
-
-    const size_t pointer = static_cast<size_t>(fixup.pointer);
-    const size_t destination = static_cast<size_t>(fixup.destination);
-    if (pointer >= object.offset + object.size ||
-        destination >= object.offset + object.size ||
-        pointer - object.offset + sizeof(uint32) > buffer.size()) {
-      continue;
-    }
-
-    std::memset(buffer.data() + pointer - object.offset, 0, sizeof(uint32));
-    fixups.locals.emplace_back(begin + pointer - object.offset,
-                               begin + destination - object.offset);
-  }
-
-  const auto *rawClass = dynamic_cast<const hkVirtualClass *>(value);
-  const auto *oldHeader =
-      rawClass ? dynamic_cast<const hkxHeader *>(rawClass->header) : nullptr;
-  if (oldHeader) {
-    for (const auto &fixup : object.section->rawGlobalFixups) {
-      if (fixup.pointer < static_cast<int32>(object.offset)) {
-        continue;
-      }
-
-      const size_t pointer = static_cast<size_t>(fixup.pointer);
-      if (pointer >= object.offset + object.size ||
-          pointer - object.offset + sizeof(uint32) > buffer.size() ||
-          fixup.sectionid < 0 ||
-          static_cast<size_t>(fixup.sectionid) >= oldHeader->sections.size()) {
-        continue;
-      }
-
-      const auto &targetSection =
-          oldHeader->sections[static_cast<size_t>(fixup.sectionid)];
-      if (fixup.destination < 0 ||
-          static_cast<size_t>(fixup.destination) >= targetSection.buffer.size()) {
-        continue;
-      }
-
-      const char *target =
-          targetSection.buffer.data() + static_cast<size_t>(fixup.destination);
-      const IhkVirtualClass *targetClass =
-          const_cast<hkxHeader *>(oldHeader)->GetClass(target);
-      if (!targetClass) {
-        continue;
-      }
-
-      std::memset(buffer.data() + pointer - object.offset, 0, sizeof(uint32));
-      fixups.locals.emplace_back(begin + pointer - object.offset, targetClass);
-    }
-  }
-
-  wr.WriteBuffer(buffer.data(), buffer.size());
-  return true;
+template <class C> const hkpRawCollisionBytes *RawCollision(const C *value) {
+  return dynamic_cast<const hkpRawCollisionBytes *>(value);
 }
 
 float RawFloatField(const IhkVirtualClass *value, size_t offset,
@@ -2859,10 +2710,6 @@ struct hkpStaticCompoundShapeSaver : HkpSaver<hkpStaticCompoundShape> {
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
-    if (SaveRawSerializedObject(wr, fixups, in, rule)) {
-      return;
-    }
-
     auto instances = Instances();
     auto leafBounds = InstanceBounds(instances);
     std::vector<size_t> ids(leafBounds.size());
@@ -2915,20 +2762,6 @@ struct hkpStaticCompoundShapeSaver : HkpSaver<hkpStaticCompoundShape> {
       fixups.locals.emplace_back(begin + 64, wr.Tell());
       WriteBuffer(wr, tree);
     }
-  }
-};
-
-struct hkpBvCompressedMeshShapeSaver : HkpSaver<hkpBvCompressedMeshShape> {
-  using HkpSaver::HkpSaver;
-
-  void Save(BinWritterRef_e wr, hkFixups &fixups) const {
-    if (SaveRawSerializedObject(wr, fixups, in, rule)) {
-      return;
-    }
-
-    auto fixed = Fixed(16);
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
-    WriteBuffer(wr, fixed);
   }
 };
 
@@ -3589,10 +3422,6 @@ struct hkpConvexVerticesShapeSaver : HkpSaver<hkpConvexVerticesShape> {
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
-    if (SaveRawSerializedObject(wr, fixups, in, rule)) {
-      return;
-    }
-
     auto fixed = Fixed(ConvexVerticesShapeFixedSize(rule.version));
     const auto packed = PackedVertices();
     CRule arrayRule = rule;
@@ -4329,26 +4158,6 @@ struct hkpStaticCompoundShapeMidInterface
   void Reflect(const IhkVirtualClass *other) override {
     saver = std::make_unique<hkpStaticCompoundShapeSaver>(
         this->rule, checked_deref_cast<const hkpStaticCompoundShape>(other));
-  }
-
-  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
-  }
-};
-
-struct hkpBvCompressedMeshShapeMidInterface
-    : hkpMidBase<hkpBvCompressedMeshShapeInternalInterface> {
-  using Base = hkpMidBase<hkpBvCompressedMeshShapeInternalInterface>;
-  using Base::Base;
-  std::unique_ptr<hkpBvCompressedMeshShapeSaver> saver;
-
-  uint32 GetShapeType() const override {
-    return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
-  }
-
-  void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpBvCompressedMeshShapeSaver>(
-        this->rule, checked_deref_cast<const hkpBvCompressedMeshShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
@@ -5166,10 +4975,6 @@ IhkVirtualClass *hkpMoppBvTreeShapeInternalInterface::Create(CRule rule) {
 
 IhkVirtualClass *hkpStaticCompoundShapeInternalInterface::Create(CRule rule) {
   return new hkpStaticCompoundShapeMidInterface{rule};
-}
-
-IhkVirtualClass *hkpBvCompressedMeshShapeInternalInterface::Create(CRule rule) {
-  return new hkpBvCompressedMeshShapeMidInterface{rule};
 }
 
 IhkVirtualClass *hkpStorageExtendedMeshShapeInternalInterface::Create(CRule rule) {

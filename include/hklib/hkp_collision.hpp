@@ -190,6 +190,24 @@ struct hkpMoppBvTreeShape : hkpShape {
   virtual const hkpShape *GetChildShape() const = 0;
 };
 
+struct hkpSimpleMeshShapeTriangle {
+  uint32 a{};
+  uint32 b{};
+  uint32 c{};
+  uint16 weldingInfo{};
+};
+
+struct hkpSimpleMeshShape : hkpShape {
+  DECLARE_HKCLASS(hkpSimpleMeshShape)
+
+  virtual size_t GetNumVertices() const = 0;
+  virtual Vector4A16 GetVertex(size_t id) const = 0;
+  virtual size_t GetNumTriangles() const = 0;
+  virtual hkpSimpleMeshShapeTriangle GetTriangle(size_t id) const = 0;
+  virtual float GetRadius() const = 0;
+  virtual uint8 GetWeldingType() const = 0;
+};
+
 struct hkpStaticCompoundShapeInstance {
   const hkpShape *shape{};
   Vector4A16 translation{};

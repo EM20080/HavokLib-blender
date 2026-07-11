@@ -64,6 +64,7 @@ struct hkpTriSampledHeightFieldCollection;
 struct hkpTriSampledHeightFieldBvTreeShape;
 struct hkpMoppCode;
 struct hkpMoppBvTreeShape;
+struct hkpSimpleMeshShape;
 struct hkpStaticCompoundShape;
 struct hkpBvCompressedMeshShape;
 struct hkpStorageExtendedMeshShape;
@@ -110,6 +111,7 @@ struct IhkVirtualClass {
   }
   virtual operator hkpMoppCode const *() const { return nullptr; }
   virtual operator hkpMoppBvTreeShape const *() const { return nullptr; }
+  virtual operator hkpSimpleMeshShape const *() const { return nullptr; }
   virtual operator hkpStaticCompoundShape const *() const { return nullptr; }
   virtual operator hkpBvCompressedMeshShape const *() const { return nullptr; }
   virtual operator hkpStorageExtendedMeshShape const *() const {

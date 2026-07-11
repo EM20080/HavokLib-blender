@@ -4152,6 +4152,83 @@ struct hkpMoppBvTreeShapeMidInterface
   }
 };
 
+// Havok 5.1.0 uses hkpSimpleMeshShape for MOPP child geometry.
+struct hkpSimpleMeshShapeMidInterface
+    : hkpMidBase<hkpSimpleMeshShapeInternalInterface> {
+  using Base = hkpMidBase<hkpSimpleMeshShapeInternalInterface>;
+  using Base::Base;
+
+  ArrayViewWithMode GetVerticesArray() const {
+    if (this->rule.version != HK500 && this->rule.version != HK510) {
+      return {};
+    }
+    ArrayViewWithMode vertices = ReadArrayWithFallback(
+        data, 24, this->rule.x64, this->DataNeedsEndianSwap(), 1 << 24);
+    if (!ArrayViewCoveredByHeader(vertices, sizeof(Vector4A16), this->header)) {
+      return {};
+    }
+    return vertices;
+  }
+
+  ArrayViewWithMode GetTrianglesArray() const {
+    if (this->rule.version != HK500 && this->rule.version != HK510) {
+      return {};
+    }
+    ArrayViewWithMode triangles = ReadArrayWithFallback(
+        data, 36, this->rule.x64, this->DataNeedsEndianSwap(), 1 << 24);
+    if (!ArrayViewCoveredByHeader(triangles, 16, this->header)) {
+      return {};
+    }
+    return triangles;
+  }
+
+  uint32 GetShapeType() const override { return 17; }
+
+  size_t GetNumVertices() const override {
+    return GetVerticesArray().view.count;
+  }
+
+  Vector4A16 GetVertex(size_t id) const override {
+    const ArrayViewWithMode vertices = GetVerticesArray();
+    if (!vertices.view.data || id >= vertices.view.count) {
+      return {};
+    }
+    return ReadValue<Vector4A16>(vertices.view.data, id * sizeof(Vector4A16),
+                                 vertices.swapEndian);
+  }
+
+  size_t GetNumTriangles() const override {
+    return GetTrianglesArray().view.count;
+  }
+
+  hkpSimpleMeshShapeTriangle GetTriangle(size_t id) const override {
+    hkpSimpleMeshShapeTriangle triangle;
+    const ArrayViewWithMode triangles = GetTrianglesArray();
+    if (!triangles.view.data || id >= triangles.view.count) {
+      return triangle;
+    }
+    const char *record = triangles.view.data + id * 16;
+    triangle.a = ReadValue<uint32>(record, 0, triangles.swapEndian);
+    triangle.b = ReadValue<uint32>(record, 4, triangles.swapEndian);
+    triangle.c = ReadValue<uint32>(record, 8, triangles.swapEndian);
+    triangle.weldingInfo =
+        ReadValue<uint16>(record, 12, triangles.swapEndian);
+    return triangle;
+  }
+
+  float GetRadius() const override {
+    return (this->rule.version == HK500 || this->rule.version == HK510)
+               ? ReadValue<float>(data, 60, this->DataNeedsEndianSwap())
+               : 0.0f;
+  }
+
+  uint8 GetWeldingType() const override {
+    return (this->rule.version == HK500 || this->rule.version == HK510)
+               ? ReadValue<uint8>(data, 64)
+               : 0;
+  }
+};
+
 struct hkpStaticCompoundShapeMidInterface
     : hkpMidBase<hkpStaticCompoundShapeInternalInterface> {
   using Base = hkpMidBase<hkpStaticCompoundShapeInternalInterface>;
@@ -5389,6 +5466,10 @@ IhkVirtualClass *hkpMoppCodeInternalInterface::Create(CRule rule) {
 
 IhkVirtualClass *hkpMoppBvTreeShapeInternalInterface::Create(CRule rule) {
   return new hkpMoppBvTreeShapeMidInterface{rule};
+}
+
+IhkVirtualClass *hkpSimpleMeshShapeInternalInterface::Create(CRule rule) {
+  return new hkpSimpleMeshShapeMidInterface{rule};
 }
 
 IhkVirtualClass *hkpStaticCompoundShapeInternalInterface::Create(CRule rule) {

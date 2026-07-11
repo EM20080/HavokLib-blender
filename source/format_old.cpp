@@ -28,11 +28,6 @@
 #include "spike/except.hpp"
 #include "spike/master_printer.hpp"
 #include "spike/type/pointer.hpp"
-#include <algorithm>
-#include <ctype.h>
-#include <string>
-#include <unordered_map>
-
 #include "spike/io/binreader.hpp"
 #include "spike/io/binwritter.hpp"
 
@@ -754,6 +749,8 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "hkpPhysicsData",
         "hkpPhysicsSystem",
         "hkpRigidBody",
+        "hkpStaticCompoundShape",
+        "hkpBvCompressedMeshShape",
         "hkpMoppBvTreeShape",
         "hkpMoppCode",
         "hkpStorageExtendedMeshShape",

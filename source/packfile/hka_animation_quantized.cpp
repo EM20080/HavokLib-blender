@@ -18,13 +18,6 @@
 #include "hka_animation.hpp"
 #include "hklib/hka_skeleton.hpp"
 #include "internal/hka_quantizedanimation.hpp"
-#include <algorithm>
-#include <cctype>
-#include <cstring>
-#include <cmath>
-#include <string>
-#include <unordered_map>
-#include <vector>
 
 #include "hka_animation_quantized.inl"
 

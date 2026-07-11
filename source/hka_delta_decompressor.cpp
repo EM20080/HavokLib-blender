@@ -16,9 +16,6 @@
 */
 
 #include "hka_delta_decompressor.hpp"
-#include <algorithm>
-#include <climits>
-#include <cmath>
 
 void Decompress(float offset, float scale, char *buffer, char bitWidth,
                 size_t numItems, std::vector<float> &container) {

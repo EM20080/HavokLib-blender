@@ -26,6 +26,7 @@ struct hkpShape;
 struct hkpSampledHeightFieldShape;
 struct hkpMoppCode;
 struct hkpStaticCompoundShape;
+struct hkpBvCompressedMeshShape;
 struct hkpStorageExtendedMeshShapeMeshSubpartStorage;
 struct hkpStorageExtendedMeshShapeShapeSubpartStorage;
 
@@ -126,6 +127,7 @@ struct hkpRigidBody : IhkVirtualClass {
 struct hkpShape : IhkVirtualClass {
   DECLARE_HKCLASS(hkpShape)
   virtual uint32 GetShapeType() const = 0;
+  virtual uint32 GetShapeUserData() const { return 0; }
 };
 
 struct hkpSampledHeightFieldShape : hkpShape {
@@ -203,6 +205,40 @@ struct hkpStaticCompoundShape : hkpShape {
 
   virtual size_t GetNumInstances() const = 0;
   virtual hkpStaticCompoundShapeInstance GetInstance(size_t id) const = 0;
+};
+
+struct hkpBvCompressedMeshShapeTriangle {
+  uint32 a{};
+  uint32 b{};
+  uint32 c{};
+  uint32 filterInfo{};
+  uint32 userData{};
+  uint32 primitiveIndex{0xffffffffu};
+  uint8 triangleIndex{};
+};
+
+struct hkpBvCompressedMeshShape : hkpShape {
+  DECLARE_HKCLASS(hkpBvCompressedMeshShape)
+
+  virtual float GetConvexRadius() const { return 0.0f; }
+  virtual uint8 GetWeldingType() const { return 0; }
+  virtual Vector4A16 GetBvcAabbMin() const {
+    return Vector4A16(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  virtual Vector4A16 GetBvcAabbMax() const {
+    return Vector4A16(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  virtual size_t GetNumBvcVertices() const { return 0; }
+  virtual Vector4A16 GetBvcVertex(size_t id) const {
+    (void)id;
+    return Vector4A16(0.0f, 0.0f, 0.0f, 0.0f);
+  }
+  virtual size_t GetNumBvcTriangles() const { return 0; }
+  virtual hkpBvCompressedMeshShapeTriangle GetBvcTriangle(size_t id) const {
+    (void)id;
+    return {};
+  }
+  virtual size_t GetNumBvcPrimitiveKeys() const { return GetNumBvcTriangles(); }
 };
 
 struct hkpStorageExtendedMeshShape : hkpShape {

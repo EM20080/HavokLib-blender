@@ -20,8 +20,6 @@
 
 #include "base.hpp"
 #include "hka_animation_spline.inl"
-#include <algorithm>
-#include <span>
 
 namespace {
 

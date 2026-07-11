@@ -22,7 +22,6 @@
 #include "spike/io/binwritter.hpp"
 #include "spike/master_printer.hpp"
 #include "spike/type/pointer.hpp"
-#include <map>
 
 template <class C> void PtrGuard(const C *val) {
   if (!val) {

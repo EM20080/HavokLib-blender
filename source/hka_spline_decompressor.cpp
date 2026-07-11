@@ -16,8 +16,6 @@
 */
 
 #include "hka_spline_decompressor.hpp"
-#include <cmath>
-#include <cstring>
 
 namespace {
 

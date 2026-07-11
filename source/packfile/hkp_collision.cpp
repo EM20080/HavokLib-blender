@@ -21,16 +21,7 @@
 #include "base.hpp"
 #include "hklib/hk_packfile.hpp"
 #include "spike/type/pointer.hpp"
-#include <algorithm>
-#include <cmath>
-#include <cstring>
-#include <limits>
-#include <memory>
-#include <string>
-#include <type_traits>
-#include <unordered_map>
-#include <vector>
-
+#include <array>
 namespace {
 auto MultiplySize(size_t left, size_t right, size_t &out) {
   if (left == 0 || right == 0) {
@@ -197,11 +188,6 @@ es::Matrix44 ByteSwapMatrix44(es::Matrix44 value) {
 auto RequiresEndianSwap(const IhkPackFile *header) {
   const auto *oldHeader = dynamic_cast<const hkxHeader *>(header);
   return oldHeader && oldHeader->layout.littleEndian == 0;
-}
-
-auto ValueNeedsEndianSwap(const IhkVirtualClass *value) {
-  const auto *virtualClass = dynamic_cast<const hkVirtualClass *>(value);
-  return virtualClass && RequiresEndianSwap(virtualClass->header);
 }
 
 template <class C> C ReadValue(const char *data, size_t offset,
@@ -687,25 +673,25 @@ constexpr uint32 kLockedArrayCapacityMask = 0xc0000000u;
 constexpr size_t kCollisionPtrSize = 4;
 constexpr size_t kPhysicsDataFixedSize = 32;
 constexpr size_t kPhysicsSystemFixedSize = 80;
-constexpr size_t kRigidBodyFixedSize = 512;
 constexpr size_t kMoppBvTreeShapeFixedSize = 64;
 constexpr size_t kStaticCompoundShapeFixedSize = 112;
 constexpr size_t kStaticCompoundInstanceSize = 64;
 constexpr size_t kStaticCompoundTreeNodeSize = 6;
-constexpr size_t kStorageMeshShapeFixedSize = 216;
-constexpr size_t kMeshSubpartStorageFixedSize = 80;
+constexpr size_t kBvcShapeFixedSize = 224;
+constexpr size_t kBvcTreeOffset = 80;
+constexpr size_t kBvcSectionSize = 96;
+constexpr size_t kBvcSectionTreeNodeSize = 4;
+constexpr size_t kBvcParentTreeNodeSize = 5;
+constexpr size_t kBvcPrimitiveSize = 4;
+constexpr size_t kBvcDataRunSize = 8;
+constexpr size_t kBvcSharedVerticesPageSize = 65536;
 constexpr size_t kShapeSubpartStorageFixedSize = 56;
 constexpr size_t kListShapeFixedSize = 112;
 constexpr size_t kBoxShapeFixedSize = 48;
 constexpr size_t kCylinderShapeFixedSize = 80;
 constexpr size_t kConvexTranslateShapeFixedSize = 48;
 constexpr size_t kConvexTransformShapeFixedSize = 96;
-constexpr size_t kTriangleSubpartFixedSize = 64;
 constexpr size_t kShapeSubpartFixedSize = 64;
-
-uint32 LockedArrayCapacity(size_t count) {
-  return kLockedArrayCapacityMask | static_cast<uint32>(count);
-}
 
 uint32 LockedArrayCapacity(hkToolset version, size_t count) {
   uint32 capacityMask = kLockedArrayCapacityMask;
@@ -845,12 +831,6 @@ void WriteMatrixField(std::vector<char> &buffer, size_t offset,
   WriteField(buffer, offset, value);
 }
 
-void WriteArrayHeader(std::vector<char> &buffer, size_t offset, size_t count) {
-  WriteField<uint32>(buffer, offset, 0);
-  WriteField<uint32>(buffer, offset + 4, static_cast<uint32>(count));
-  WriteField<uint32>(buffer, offset + 8, LockedArrayCapacity(count));
-}
-
 void WriteArrayHeader(std::vector<char> &buffer, size_t offset, size_t count,
                       hkToolset version) {
   WriteField<uint32>(buffer, offset, 0);
@@ -864,34 +844,23 @@ void WriteSimpleArrayHeader(std::vector<char> &buffer, size_t offset,
   WriteField<uint32>(buffer, offset + 4, static_cast<uint32>(count));
 }
 
-std::vector<char> FixedObject(size_t fixedSize, const char *rawData,
-                              CRule rawRule, CRule targetRule) {
-  std::vector<char> output(fixedSize, 0);
+bool HasHkcdShapeBase(CRule rule) {
+  return rule.version == HK2012_1 || rule.version == HK2012_2;
+}
 
-  if (rawData && rawRule.version == targetRule.version &&
-      rawRule.x64 == targetRule.x64 && !targetRule.x64) {
-    std::memcpy(output.data(), rawData, fixedSize);
+void WriteShapeBase(std::vector<char> &buffer, CRule rule,
+                    const hkpShape *shape) {
+  if (HasHkcdShapeBase(rule)) {
+    WriteField<uint32>(buffer, 8, 0x00000400u);
+    WriteField<uint32>(buffer, 12, shape ? shape->GetShapeUserData() : 0);
+    return;
   }
 
-  return output;
+  WriteField<uint32>(buffer, 12, shape ? shape->GetShapeType() : 0);
 }
 
-ArrayView ReadSimpleArray(const char *data, size_t offset, uint8 x64,
-                          uint8 swapEndian = false) {
-  ArrayView output;
-  output.data = ReadPointer<char>(data, offset, x64);
-  output.count =
-      ReadValue<uint32>(data, offset + (x64 ? static_cast<size_t>(8) : 4),
-                        swapEndian);
-  return output;
-}
-
-ArrayView ReadSimpleArrayX86(const char *data, size_t offset) {
-  return ReadSimpleArray(data, offset, false);
-}
-
-ArrayView ReadArrayX86(const char *data, size_t offset) {
-  return ReadArray(data, offset, false);
+std::vector<char> FixedObject(size_t fixedSize) {
+  return std::vector<char>(fixedSize, 0);
 }
 
 void WriteBuffer(BinWritterRef_e wr, const std::vector<char> &buffer) {
@@ -911,7 +880,7 @@ void WriteBuffer(BinWritterRef_e wr, const std::vector<char> &buffer) {
   BufferFields().erase(&buffer);
 }
 
-void WriteRawBytes(BinWritterRef_e wr, const void *data, size_t size) {
+void WriteBytes(BinWritterRef_e wr, const void *data, size_t size) {
   if (data && size) {
     wr.WriteBuffer(static_cast<const char *>(data), size);
   }
@@ -961,7 +930,7 @@ void SaveValueArray(BinWritterRef_e wr, hkFixups &fixups, size_t objectBegin,
   } else if (elementSize == sizeof(Vector4A16)) {
     WriteValueArray<Vector4A16>(wr, data, count);
   } else {
-    WriteRawBytes(wr, data, count * elementSize);
+    WriteBytes(wr, data, count * elementSize);
   }
 }
 
@@ -1080,6 +1049,19 @@ void AddShapeAabb(const hkpShape *shape, Bounds &bounds) {
         AddShapeAabb(subpart->GetShape(i), bounds);
       }
     }
+    return;
+  }
+
+  if (const auto *compressed =
+          safe_deref_cast<const hkpBvCompressedMeshShape>(shape)) {
+    if (compressed->GetNumBvcVertices()) {
+      for (size_t i = 0; i < compressed->GetNumBvcVertices(); i++) {
+        bounds.Add(compressed->GetBvcVertex(i));
+      }
+      return;
+    }
+    bounds.Add(compressed->GetBvcAabbMin());
+    bounds.Add(compressed->GetBvcAabbMax());
     return;
   }
 
@@ -1297,12 +1279,37 @@ uint8 PackAabbAxis(float parentMin, float parentMax, float childMin,
   return static_cast<uint8>((minNibble << 4) | maxNibble);
 }
 
+void UnpackAabbAxis(float parentMin, float parentMax, uint8 packed,
+                    float &childMin, float &childMax) {
+  const float extent = (parentMax - parentMin) / 226.0f;
+  const uint8 minNibble = packed >> 4;
+  const uint8 maxNibble = packed & 0x0fu;
+  childMin = parentMin + extent * float(minNibble * minNibble);
+  childMax = parentMax - extent * float(maxNibble * maxNibble);
+}
+
+Bounds UnpackAabbNode(const Bounds &parentBounds, const char *nodeData) {
+  Bounds output;
+  output.count = 1;
+  UnpackAabbAxis(parentBounds.min[0], parentBounds.max[0],
+                 static_cast<uint8>(nodeData[0]), output.min[0],
+                 output.max[0]);
+  UnpackAabbAxis(parentBounds.min[1], parentBounds.max[1],
+                 static_cast<uint8>(nodeData[1]), output.min[1],
+                 output.max[1]);
+  UnpackAabbAxis(parentBounds.min[2], parentBounds.max[2],
+                 static_cast<uint8>(nodeData[2]), output.min[2],
+                 output.max[2]);
+  return output;
+}
+
 std::vector<char> BuildAabb6TreeBuffer(const std::vector<StaticTreeNode> &nodes) {
   std::vector<char> output(nodes.size() * kStaticCompoundTreeNodeSize, 0);
   if (nodes.empty()) {
     return output;
   }
 
+  std::vector<Bounds> decodedBounds(nodes.size());
   auto writeNode = [&](size_t id, const Bounds &parentBounds) {
     const auto &node = nodes[id];
     const size_t offset = id * kStaticCompoundTreeNodeSize;
@@ -1326,20 +1333,277 @@ std::vector<char> BuildAabb6TreeBuffer(const std::vector<StaticTreeNode> &nodes)
       const uint16 lo = static_cast<uint16>(node.data);
       std::memcpy(output.data() + offset + 4, &lo, sizeof(lo));
     }
+
+    return UnpackAabbNode(parentBounds, output.data() + offset);
   };
 
-  writeNode(0, nodes[0].bounds);
+  decodedBounds[0] = writeNode(0, nodes[0].bounds);
   for (size_t i = 0; i < nodes.size(); i++) {
     if (!nodes[i].delta) {
       continue;
     }
 
-    writeNode(i + 1, nodes[i].bounds);
-    writeNode(i + static_cast<size_t>(nodes[i].delta), nodes[i].bounds);
+    const Bounds &parentBounds =
+        decodedBounds[i].count ? decodedBounds[i] : nodes[i].bounds;
+    decodedBounds[i + 1] = writeNode(i + 1, parentBounds);
+    const size_t rightIndex = i + static_cast<size_t>(nodes[i].delta);
+    decodedBounds[rightIndex] = writeNode(rightIndex, parentBounds);
   }
 
   MarkBufferField(output, 4, output.size() > 4 ? output.size() - 4 : 0,
                   kStaticCompoundTreeNodeSize);
+  return output;
+}
+
+uint32 BvcPackVertex32(const Bounds &bounds, const Vector4A16 &vertex) {
+  const auto packAxis = [](float min, float max, float value, uint32 mask) {
+    const float delta = max - min;
+    if (delta <= 0.0f) {
+      return uint32{};
+    }
+
+    float fraction = (value - min) / delta;
+    fraction = (std::max)(0.0f, (std::min)(1.0f, fraction));
+    return static_cast<uint32>(fraction * static_cast<float>(mask) + 0.5f);
+  };
+
+  constexpr uint32 xMask = (1u << 11) - 1u;
+  constexpr uint32 yMask = (1u << 11) - 1u;
+  constexpr uint32 zMask = (1u << 10) - 1u;
+  const uint32 x = packAxis(bounds.min[0], bounds.max[0], vertex._arr[0], xMask);
+  const uint32 y = packAxis(bounds.min[1], bounds.max[1], vertex._arr[1], yMask);
+  const uint32 z = packAxis(bounds.min[2], bounds.max[2], vertex._arr[2], zMask);
+  return (z << 22) | (y << 11) | x;
+}
+
+Vector4A16 BvcDecodeVertex32(const float *codecParms, uint32 packed) {
+  constexpr uint32 xMask = (1u << 11) - 1u;
+  constexpr uint32 yMask = (1u << 11) - 1u;
+  constexpr uint32 zMask = (1u << 10) - 1u;
+  const uint32 x = packed & xMask;
+  const uint32 y = (packed >> 11) & yMask;
+  const uint32 z = (packed >> 22) & zMask;
+  return Vector4A16(codecParms[0] + static_cast<float>(x) * codecParms[3],
+                    codecParms[1] + static_cast<float>(y) * codecParms[4],
+                    codecParms[2] + static_cast<float>(z) * codecParms[5],
+                    0.0f);
+}
+
+Vector4A16 BvcDecodeVertex64(const float *codecParms, uint64 packed) {
+  constexpr uint64 xMask = (uint64{1} << 21) - 1u;
+  constexpr uint64 yMask = (uint64{1} << 21) - 1u;
+  constexpr uint64 zMask = (uint64{1} << 22) - 1u;
+  const uint64 x = packed & xMask;
+  const uint64 y = (packed >> 21) & yMask;
+  const uint64 z = (packed >> 42) & zMask;
+  return Vector4A16(codecParms[0] + static_cast<float>(x) * codecParms[3],
+                    codecParms[1] + static_cast<float>(y) * codecParms[4],
+                    codecParms[2] + static_cast<float>(z) * codecParms[5],
+                    0.0f);
+}
+
+uint32 BvcPack24_8(size_t first, size_t count) {
+  return (static_cast<uint32>(first) << 8) |
+         static_cast<uint32>(count & 0xffu);
+}
+
+uint32 BvcFirst24_8(uint32 value) {
+  return value >> 8;
+}
+
+uint8 BvcCount24_8(uint32 value) {
+  return static_cast<uint8>(value & 0xffu);
+}
+
+void WriteBvcCodecParms(std::vector<char> &buffer, size_t offset,
+                        const Bounds &bounds) {
+  constexpr float xMask = static_cast<float>((1u << 11) - 1u);
+  constexpr float yMask = static_cast<float>((1u << 11) - 1u);
+  constexpr float zMask = static_cast<float>((1u << 10) - 1u);
+  WriteField<float>(buffer, offset + 0, bounds.min[0]);
+  WriteField<float>(buffer, offset + 4, bounds.min[1]);
+  WriteField<float>(buffer, offset + 8, bounds.min[2]);
+  WriteField<float>(buffer, offset + 12, (bounds.max[0] - bounds.min[0]) / xMask);
+  WriteField<float>(buffer, offset + 16, (bounds.max[1] - bounds.min[1]) / yMask);
+  WriteField<float>(buffer, offset + 20, (bounds.max[2] - bounds.min[2]) / zMask);
+}
+
+std::vector<char> BuildBvcAabbTreeBuffer(const std::vector<StaticTreeNode> &nodes,
+                                         size_t nodeSize) {
+  std::vector<char> output(nodes.size() * nodeSize, 0);
+  if (nodes.empty()) {
+    return output;
+  }
+
+  std::vector<Bounds> decodedBounds(nodes.size());
+  auto writeNode = [&](size_t id, const Bounds &parentBounds) {
+    const auto &node = nodes[id];
+    const size_t offset = id * nodeSize;
+    output[offset + 0] =
+        PackAabbAxis(parentBounds.min[0], parentBounds.max[0],
+                     node.bounds.min[0], node.bounds.max[0]);
+    output[offset + 1] =
+        PackAabbAxis(parentBounds.min[1], parentBounds.max[1],
+                     node.bounds.min[1], node.bounds.max[1]);
+    output[offset + 2] =
+        PackAabbAxis(parentBounds.min[2], parentBounds.max[2],
+                     node.bounds.min[2], node.bounds.max[2]);
+
+    if (nodeSize == kBvcSectionTreeNodeSize) {
+      output[offset + 3] = node.delta ? static_cast<char>(node.delta | 1)
+                                      : static_cast<char>(node.data << 1);
+      return UnpackAabbNode(parentBounds, output.data() + offset);
+    }
+
+    if (node.delta) {
+      const int encoded = node.delta >> 1;
+      output[offset + 3] = static_cast<char>(0x80 | ((encoded >> 8) & 0x7f));
+      output[offset + 4] = static_cast<char>(encoded);
+    } else {
+      output[offset + 3] = static_cast<char>((node.data >> 8) & 0x7f);
+      output[offset + 4] = static_cast<char>(node.data);
+    }
+
+    return UnpackAabbNode(parentBounds, output.data() + offset);
+  };
+
+  decodedBounds[0] = writeNode(0, nodes[0].bounds);
+  for (size_t i = 0; i < nodes.size(); i++) {
+    if (!nodes[i].delta) {
+      continue;
+    }
+
+    const Bounds &parentBounds =
+        decodedBounds[i].count ? decodedBounds[i] : nodes[i].bounds;
+    decodedBounds[i + 1] = writeNode(i + 1, parentBounds);
+    const size_t rightIndex = i + static_cast<size_t>(nodes[i].delta);
+    decodedBounds[rightIndex] = writeNode(rightIndex, parentBounds);
+  }
+
+  return output;
+}
+
+struct BvcPrimitiveRecord {
+  uint8 indices[4]{};
+  bool hasSecondTriangle{};
+};
+
+struct BvcDataRunRecord {
+  uint32 value{};
+  uint8 index{};
+  uint8 count{};
+};
+
+struct BvcSectionData {
+  Bounds bounds;
+  std::vector<Vector4A16> vertices;
+  std::vector<uint32> packedVertices;
+  std::vector<BvcPrimitiveRecord> primitives;
+  std::vector<BvcDataRunRecord> dataRuns;
+  std::vector<char> nodes;
+  size_t firstPackedVertex{};
+  size_t firstPrimitive{};
+  size_t firstDataRun{};
+};
+
+uint32 BvcMaxKeyValue(const std::vector<BvcSectionData> &sections) {
+  uint32 output = 0;
+  for (size_t sectionIndex = 0; sectionIndex < sections.size(); sectionIndex++) {
+    const auto &section = sections[sectionIndex];
+    for (size_t primitiveIndex = 0; primitiveIndex < section.primitives.size();
+         primitiveIndex++) {
+      uint32 key = static_cast<uint32>((sectionIndex << 8) |
+                                       (primitiveIndex << 1));
+      if (section.primitives[primitiveIndex].hasSecondTriangle) {
+        key |= 1u;
+      }
+      output = (std::max)(output, key);
+    }
+  }
+  return output;
+}
+
+uint32 BvcPaletteIndex(std::vector<uint32> &palette, uint32 value) {
+  for (size_t i = 0; i < palette.size(); i++) {
+    if (palette[i] == value) {
+      return static_cast<uint32>(i);
+    }
+  }
+  if (palette.size() >= 256) {
+    return 0;
+  }
+  palette.emplace_back(value);
+  return static_cast<uint32>(palette.size() - 1);
+}
+
+std::vector<char> BvcSectionBuffer(const std::vector<BvcSectionData> &sections,
+                                   hkToolset version) {
+  std::vector<char> output(sections.size() * kBvcSectionSize, 0);
+  for (size_t i = 0; i < sections.size(); i++) {
+    const auto &section = sections[i];
+    const size_t offset = i * kBvcSectionSize;
+    WriteArrayHeader(output, offset + 0,
+                     section.nodes.size() / kBvcSectionTreeNodeSize, version);
+    WriteVectorField(output, offset + 16,
+                     Vector4A16(section.bounds.min[0], section.bounds.min[1],
+                                section.bounds.min[2], 0.0f));
+    WriteVectorField(output, offset + 32,
+                     Vector4A16(section.bounds.max[0], section.bounds.max[1],
+                                section.bounds.max[2], 0.0f));
+    WriteBvcCodecParms(output, offset + 48, section.bounds);
+    WriteField<uint32>(output, offset + 72,
+                       static_cast<uint32>(section.firstPackedVertex));
+    WriteField<uint32>(output, offset + 76,
+                       BvcPack24_8(0, section.packedVertices.size()));
+    WriteField<uint32>(output, offset + 80,
+                       BvcPack24_8(section.firstPrimitive,
+                                   section.primitives.size()));
+    WriteField<uint32>(output, offset + 84,
+                       BvcPack24_8(section.firstDataRun,
+                                   section.dataRuns.size()));
+    WriteField<uint8>(output, offset + 88,
+                      static_cast<uint8>(section.packedVertices.size()));
+    WriteField<uint8>(output, offset + 89, 0);
+    WriteField<uint16>(output, offset + 90, static_cast<uint16>(i));
+    WriteField<uint8>(output, offset + 92, 0);
+    WriteField<uint8>(output, offset + 93, 0);
+    WriteField<uint8>(output, offset + 94, 0);
+    WriteField<uint8>(output, offset + 95, 0);
+  }
+  return output;
+}
+
+std::vector<char> BvcPrimitiveBuffer(const std::vector<BvcSectionData> &sections) {
+  std::vector<char> output;
+  for (const auto &section : sections) {
+    for (const auto &primitive : section.primitives) {
+      output.insert(output.end(), primitive.indices, primitive.indices + 4);
+    }
+  }
+  return output;
+}
+
+std::vector<uint32> BvcPackedVertexBuffer(
+    const std::vector<BvcSectionData> &sections) {
+  std::vector<uint32> output;
+  for (const auto &section : sections) {
+    output.insert(output.end(), section.packedVertices.begin(),
+                  section.packedVertices.end());
+  }
+  return output;
+}
+
+std::vector<char> BvcDataRunBuffer(const std::vector<BvcSectionData> &sections) {
+  std::vector<char> output;
+  for (const auto &section : sections) {
+    for (const auto &run : section.dataRuns) {
+      const size_t offset = output.size();
+      output.resize(offset + kBvcDataRunSize, 0);
+      WriteField<uint32>(output, offset + 0, run.value);
+      WriteField<uint8>(output, offset + 4, run.index);
+      WriteField<uint8>(output, offset + 5, run.count);
+    }
+  }
   return output;
 }
 
@@ -1351,6 +1615,7 @@ uint32 StaticCompoundInstanceBits(const hkpStaticCompoundShapeInstance &inst) {
 
   uint32 bits = 0;
   if (!safe_deref_cast<const hkpMoppBvTreeShape>(inst.shape) &&
+      !safe_deref_cast<const hkpBvCompressedMeshShape>(inst.shape) &&
       !safe_deref_cast<const hkpStorageExtendedMeshShape>(inst.shape) &&
       !safe_deref_cast<const hkpListShape>(inst.shape)) {
     bits |= kInstanceBitIsLeaf;
@@ -1453,20 +1718,6 @@ std::vector<char> MakeShapeSubpart(size_t numShapes) {
   return record;
 }
 
-void ClearOldTriangleSubpartPointers(std::vector<char> &buffer,
-                                      size_t offset) {
-  WriteField<uint32>(buffer, offset + 4, 0);
-  WriteField<uint32>(buffer, offset + 12, 0);
-  WriteField<uint32>(buffer, offset + 20, 0);
-  WriteField<uint32>(buffer, offset + 48, 0);
-}
-
-void ClearOldShapeSubpartPointers(std::vector<char> &buffer, size_t offset) {
-  WriteField<uint32>(buffer, offset + 4, 0);
-  WriteField<uint32>(buffer, offset + 12, 0);
-  WriteField<uint32>(buffer, offset + 16, 0);
-}
-
 void MarkTriangleSubpartArray(std::vector<char> &buffer, hkToolset version) {
   const size_t recordSize = TriangleSubpartFixedSize(version);
   if (!recordSize) {
@@ -1526,51 +1777,6 @@ uint32 StorageShapeKey(uint32 subpartIndex, uint32 terminalIndex,
   return shapeBit | key;
 }
 
-void GatherPrimitiveKeys(const hkpShape *shape, std::vector<uint32> &keys) {
-  if (!shape) {
-    return;
-  }
-
-  if (const auto *mopp = safe_deref_cast<const hkpMoppBvTreeShape>(shape)) {
-    GatherPrimitiveKeys(mopp->GetChildShape(), keys);
-    return;
-  }
-
-  if (const auto *mesh = safe_deref_cast<const hkpStorageExtendedMeshShape>(shape)) {
-    for (size_t subpartIndex = 0; subpartIndex < mesh->GetNumMeshSubparts();
-         subpartIndex++) {
-      const auto *subpart = mesh->GetMeshSubpart(subpartIndex);
-      const size_t numTriangles = subpart ? subpart->GetNumTriangles() : 0;
-      for (size_t triangle = 0; triangle < numTriangles; triangle++) {
-        keys.emplace_back(StorageShapeKey(static_cast<uint32>(subpartIndex),
-                                          static_cast<uint32>(triangle),
-                                          kStorageTriangleKey));
-      }
-    }
-
-    for (size_t subpartIndex = 0; subpartIndex < mesh->GetNumShapeSubparts();
-         subpartIndex++) {
-      const auto *subpart = mesh->GetShapeSubpart(subpartIndex);
-      const size_t numShapes = subpart ? subpart->GetNumShapes() : 0;
-      for (size_t child = 0; child < numShapes; child++) {
-        keys.emplace_back(StorageShapeKey(static_cast<uint32>(subpartIndex),
-                                          static_cast<uint32>(child),
-                                          kStorageShapeKey));
-      }
-    }
-    return;
-  }
-
-  if (const auto *list = safe_deref_cast<const hkpListShape>(shape)) {
-    for (size_t i = 0; i < list->GetNumChildren(); i++) {
-      keys.emplace_back(static_cast<uint32>(i));
-    }
-    return;
-  }
-
-  keys.emplace_back(0);
-}
-
 void EncodeTerminal(uint32 key, std::vector<uint8> &code) {
   if (key < 0x20) {
     code.emplace_back(static_cast<uint8>(0x30u + key));
@@ -1588,69 +1794,6 @@ void EncodeTerminal(uint32 key, std::vector<uint8> &code) {
     code.emplace_back(static_cast<uint8>(key));
   } else {
     code.emplace_back(static_cast<uint8>(0x53));
-    code.emplace_back(static_cast<uint8>(key >> 24));
-    code.emplace_back(static_cast<uint8>(key >> 16));
-    code.emplace_back(static_cast<uint8>(key >> 8));
-    code.emplace_back(static_cast<uint8>(key));
-  }
-}
-
-void EncodeTerminalList(const std::vector<uint32> &keys,
-                        std::vector<uint8> &code) {
-  if (keys.empty()) {
-    code.emplace_back(uint8{});
-    return;
-  }
-
-  if (keys.size() == 1) {
-    EncodeTerminal(keys.front(), code);
-    return;
-  }
-
-  uint32 maxKey = 0;
-  for (uint32 key : keys) {
-    maxKey = (std::max)(maxKey, key);
-  }
-
-  if (keys.size() <= 0xff && maxKey <= 0xff) {
-    code.emplace_back(static_cast<uint8>(0x54));
-    code.emplace_back(static_cast<uint8>(keys.size()));
-    for (uint32 key : keys) {
-      code.emplace_back(static_cast<uint8>(key));
-    }
-    return;
-  }
-
-  if (keys.size() <= 0xffff && maxKey <= 0xffff) {
-    code.emplace_back(static_cast<uint8>(0x55));
-    code.emplace_back(static_cast<uint8>(keys.size() >> 8));
-    code.emplace_back(static_cast<uint8>(keys.size()));
-    for (uint32 key : keys) {
-      code.emplace_back(static_cast<uint8>(key >> 8));
-      code.emplace_back(static_cast<uint8>(key));
-    }
-    return;
-  }
-
-  if (keys.size() <= 0xffffff && maxKey <= 0xffffff) {
-    code.emplace_back(static_cast<uint8>(0x56));
-    code.emplace_back(static_cast<uint8>(keys.size() >> 16));
-    code.emplace_back(static_cast<uint8>(keys.size() >> 8));
-    code.emplace_back(static_cast<uint8>(keys.size()));
-    for (uint32 key : keys) {
-      code.emplace_back(static_cast<uint8>(key >> 16));
-      code.emplace_back(static_cast<uint8>(key >> 8));
-      code.emplace_back(static_cast<uint8>(key));
-    }
-    return;
-  }
-
-  code.emplace_back(static_cast<uint8>(0x57));
-  code.emplace_back(static_cast<uint8>(keys.size() >> 24));
-  code.emplace_back(static_cast<uint8>(keys.size() >> 16));
-  code.emplace_back(static_cast<uint8>(keys.size() >> 8));
-  code.emplace_back(static_cast<uint8>(keys.size()));
-  for (uint32 key : keys) {
     code.emplace_back(static_cast<uint8>(key >> 24));
     code.emplace_back(static_cast<uint8>(key >> 16));
     code.emplace_back(static_cast<uint8>(key >> 8));
@@ -1838,47 +1981,6 @@ uint8 MoppDoubleCutCommand(size_t axis) {
   return static_cast<uint8>(0x26u + axis);
 }
 
-size_t MoppTerminalListSize(const std::vector<MoppPrimitive> &primitives,
-                            const std::vector<size_t> &ids, size_t begin,
-                            size_t count) {
-  if (count == 0) {
-    return 1;
-  }
-
-  if (count == 1) {
-    const uint32 key = primitives[ids[begin]].key;
-    if (key < 0x20) {
-      return 1;
-    }
-    if (key <= 0xff) {
-      return 2;
-    }
-    if (key <= 0xffff) {
-      return 3;
-    }
-    if (key <= 0xffffff) {
-      return 4;
-    }
-    return 5;
-  }
-
-  uint32 maxKey = 0;
-  for (size_t i = 0; i < count; i++) {
-    maxKey = (std::max)(maxKey, primitives[ids[begin + i]].key);
-  }
-
-  if (count <= 0xff && maxKey <= 0xff) {
-    return 2 + count;
-  }
-  if (count <= 0xffff && maxKey <= 0xffff) {
-    return 3 + count * sizeof(uint16);
-  }
-  if (count <= 0xffffff && maxKey <= 0xffffff) {
-    return 4 + count * 3;
-  }
-  return 5 + count * sizeof(uint32);
-}
-
 uint8 MoppCutMin(const MoppPrimitive &primitive, size_t axis) {
   return primitive.qmin[axis];
 }
@@ -1903,37 +2005,6 @@ void EmitMoppBounds(const std::vector<MoppPrimitive> &primitives,
     code.emplace_back(minValue);
     code.emplace_back(maxValue);
   }
-}
-
-size_t MoppLeafCount(const std::vector<MoppPrimitive> &primitives,
-                     const std::vector<size_t> &ids) {
-  size_t count = 1;
-  while (count < ids.size()) {
-    const size_t next = count + 1;
-    const size_t leafSize =
-        9 + MoppTerminalListSize(primitives, ids, 0, next);
-    if (leafSize > 250) {
-      break;
-    }
-    count = next;
-  }
-
-  return count;
-}
-
-std::vector<uint8> EmitMoppLeaf(const std::vector<MoppPrimitive> &primitives,
-                                const std::vector<size_t> &ids) {
-  std::vector<uint8> code;
-  code.reserve(9 + MoppTerminalListSize(primitives, ids, 0, ids.size()));
-  EmitMoppBounds(primitives, ids, code);
-
-  std::vector<uint32> keys;
-  keys.reserve(ids.size());
-  for (size_t id : ids) {
-    keys.emplace_back(primitives[id].key);
-  }
-  EncodeTerminalList(keys, code);
-  return code;
 }
 
 std::vector<uint8> EmitMoppLeafHk550(
@@ -2197,72 +2268,54 @@ std::unordered_map<const hkpMoppCode *, GeneratedMopp> &GeneratedMoppCode() {
 }
 }
 
-struct hkpRawCollisionBytes {
-  virtual const char *GetRawCollisionData() const = 0;
-  virtual CRule GetRawCollisionRule() const = 0;
-  virtual ~hkpRawCollisionBytes() = default;
+struct hkpSerializedCollisionBytes {
+  virtual const char *GetSerializedCollisionData() const = 0;
+  virtual CRule GetSerializedCollisionRule() const = 0;
+  virtual ~hkpSerializedCollisionBytes() = default;
 };
 
-template <class C> struct hkpMidBase : C, hkpRawCollisionBytes {
+template <class C> struct hkpMidBase : C, hkpSerializedCollisionBytes {
   char *data = nullptr;
 
   explicit hkpMidBase(CRule) {}
 
   void SetDataPointer(void *ptr) override { data = static_cast<char *>(ptr); }
   const void *GetPointer() const override { return data; }
-  const char *GetRawCollisionData() const override { return data; }
-  CRule GetRawCollisionRule() const override { return this->rule; }
+  const char *GetSerializedCollisionData() const override { return data; }
+  CRule GetSerializedCollisionRule() const override { return this->rule; }
   void SwapEndian() override {}
 
   auto DataNeedsEndianSwap() const { return RequiresEndianSwap(this->header); }
+
+  uint32 GetShapeUserData() const {
+    return HasHkcdShapeBase(this->rule)
+               ? ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap())
+               : 0;
+  }
 };
 
-const hkpRawCollisionBytes *RawCollision(const IhkVirtualClass *value) {
-  return dynamic_cast<const hkpRawCollisionBytes *>(value);
+const hkpSerializedCollisionBytes *SerializedCollision(const IhkVirtualClass *value) {
+  return dynamic_cast<const hkpSerializedCollisionBytes *>(value);
 }
 
-template <class C> const hkpRawCollisionBytes *RawCollision(const C *value) {
-  return dynamic_cast<const hkpRawCollisionBytes *>(value);
+template <class C> const hkpSerializedCollisionBytes *SerializedCollision(const C *value) {
+  return dynamic_cast<const hkpSerializedCollisionBytes *>(value);
 }
 
-float RawFloatField(const IhkVirtualClass *value, size_t offset,
-                    float fallback) {
-  const auto *raw = RawCollision(value);
-  if (!raw || raw->GetRawCollisionRule().x64) {
-    return fallback;
-  }
-  const char *data = raw->GetRawCollisionData();
-  return data ? ReadValue<float>(data, offset, ValueNeedsEndianSwap(value))
-              : fallback;
-}
-
-Vector4A16 RawVectorField(const IhkVirtualClass *value, size_t offset,
-                          const Vector4A16 &fallback) {
-  const auto *raw = RawCollision(value);
-  if (!raw || raw->GetRawCollisionRule().x64) {
-    return fallback;
-  }
-  const char *data = raw->GetRawCollisionData();
-  return data ? ReadValue<Vector4A16>(data, offset, ValueNeedsEndianSwap(value))
-              : fallback;
-}
-
-template <class C> struct HkpSaver {
+template <class C> struct HkpWriter {
   CRule rule{};
   const C *in{};
 
-  HkpSaver(CRule rule_, const C *in_) : rule(rule_), in(in_) {
+  HkpWriter(CRule rule_, const C *in_) : rule(rule_), in(in_) {
   }
 
   std::vector<char> Fixed(size_t fixedSize) const {
-    const auto *raw = RawCollision(in);
-    return FixedObject(fixedSize, raw ? raw->GetRawCollisionData() : nullptr,
-                       raw ? raw->GetRawCollisionRule() : CRule{}, rule);
+    return FixedObject(fixedSize);
   }
 };
 
-struct hkpPhysicsDataSaver : HkpSaver<hkpPhysicsData> {
-  using HkpSaver::HkpSaver;
+struct hkpPhysicsDataWriter : HkpWriter<hkpPhysicsData> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kPhysicsDataFixedSize);
@@ -2275,8 +2328,8 @@ struct hkpPhysicsDataSaver : HkpSaver<hkpPhysicsData> {
   }
 };
 
-struct hkpPhysicsSystemSaver : HkpSaver<hkpPhysicsSystem> {
-  using HkpSaver::HkpSaver;
+struct hkpPhysicsSystemWriter : HkpWriter<hkpPhysicsSystem> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kPhysicsSystemFixedSize);
@@ -2296,42 +2349,11 @@ struct hkpPhysicsSystemSaver : HkpSaver<hkpPhysicsSystem> {
   }
 };
 
-struct hkpRigidBodySaver : HkpSaver<hkpRigidBody> {
-  using HkpSaver::HkpSaver;
+struct hkpRigidBodyWriter : HkpWriter<hkpRigidBody> {
+  using HkpWriter::HkpWriter;
 
   std::vector<char> FixedRigidBody() const {
     auto fixed = Fixed(RigidBodyFixedSize(rule.version));
-    const auto *raw = RawCollision(in);
-    if (!raw || rule.version != HK550 || rule.x64) {
-      return fixed;
-    }
-
-    const CRule rawRule = raw->GetRawCollisionRule();
-    const char *src = raw->GetRawCollisionData();
-    if (!src || rawRule.x64 || RigidBodyFixedSize(rawRule.version) != 544) {
-      return fixed;
-    }
-
-    auto copyRange = [&](size_t dst, size_t srcOff, size_t size) {
-      if (dst + size <= fixed.size()) {
-        std::memcpy(fixed.data() + dst, src + srcOff, size);
-      }
-    };
-
-    copyRange(0, 0, 88);
-    copyRange(88, 92, 16);
-    copyRange(104, 108, 8);
-    copyRange(112, 120, 16);
-    copyRange(128, 140, 16);
-    copyRange(144, 164, 64);
-    copyRange(208, 224, 304);
-
-    WriteField<uint16>(fixed, BroadPhaseHandleOffset(false) + 6, 3);
-    WriteField<uint32>(fixed, BroadPhaseHandleOffset(false) + 12, 1);
-    WriteField<uint32>(fixed, 388, 0);
-    WriteField<float>(fixed, 392, 0.05f);
-    copyRange(396, 410, 4);
-    WriteField<uint16>(fixed, 494, 0);
     return fixed;
   }
 
@@ -2451,21 +2473,21 @@ struct hkpRigidBodySaver : HkpSaver<hkpRigidBody> {
   }
 };
 
-struct hkpShapeSaver : HkpSaver<hkpShape> {
-  using HkpSaver::HkpSaver;
+struct hkpShapeWriter : HkpWriter<hkpShape> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &) const {
     auto fixed = Fixed(16);
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteBuffer(wr, fixed);
   }
 };
 
-template <class C> struct hkpSampledHeightFieldSaverBase : HkpSaver<C> {
-  using HkpSaver<C>::HkpSaver;
+template <class C> struct hkpSampledHeightFieldWriterBase : HkpWriter<C> {
+  using HkpWriter<C>::HkpWriter;
 
   void WriteCommon(std::vector<char> &fixed) const {
-    WriteField<uint32>(fixed, 12, this->in->GetShapeType());
+    WriteShapeBase(fixed, this->rule, this->in);
     WriteField<uint32>(fixed, 16, this->in->GetXRes());
     WriteField<uint32>(fixed, 20, this->in->GetZRes());
     WriteField<float>(fixed, 24, this->in->GetHeightCenter());
@@ -2486,9 +2508,9 @@ template <class C> struct hkpSampledHeightFieldSaverBase : HkpSaver<C> {
   }
 };
 
-struct hkpSampledHeightFieldShapeSaver
-    : hkpSampledHeightFieldSaverBase<hkpSampledHeightFieldShape> {
-  using hkpSampledHeightFieldSaverBase::hkpSampledHeightFieldSaverBase;
+struct hkpSampledHeightFieldShapeWriter
+    : hkpSampledHeightFieldWriterBase<hkpSampledHeightFieldShape> {
+  using hkpSampledHeightFieldWriterBase::hkpSampledHeightFieldWriterBase;
 
   void Save(BinWritterRef_e wr, hkFixups &) const {
     auto fixed = this->Fixed(SampledHeightFieldStorageOffset());
@@ -2497,9 +2519,9 @@ struct hkpSampledHeightFieldShapeSaver
   }
 };
 
-struct hkpStorageSampledHeightFieldShapeSaver
-    : hkpSampledHeightFieldSaverBase<hkpSampledHeightFieldShape> {
-  using hkpSampledHeightFieldSaverBase::hkpSampledHeightFieldSaverBase;
+struct hkpStorageSampledHeightFieldShapeWriter
+    : hkpSampledHeightFieldWriterBase<hkpSampledHeightFieldShape> {
+  using hkpSampledHeightFieldWriterBase::hkpSampledHeightFieldWriterBase;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     std::vector<float> heights(this->in->GetNumHeights());
@@ -2519,9 +2541,9 @@ struct hkpStorageSampledHeightFieldShapeSaver
   }
 };
 
-struct hkpCompressedSampledHeightFieldShapeSaver
-    : hkpSampledHeightFieldSaverBase<hkpCompressedSampledHeightFieldShape> {
-  using hkpSampledHeightFieldSaverBase::hkpSampledHeightFieldSaverBase;
+struct hkpCompressedSampledHeightFieldShapeWriter
+    : hkpSampledHeightFieldWriterBase<hkpCompressedSampledHeightFieldShape> {
+  using hkpSampledHeightFieldWriterBase::hkpSampledHeightFieldWriterBase;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = this->Fixed(CompressedHeightFieldFixedSize(false));
@@ -2541,13 +2563,13 @@ struct hkpCompressedSampledHeightFieldShapeSaver
   }
 };
 
-struct hkpTriSampledHeightFieldCollectionSaver
-    : HkpSaver<hkpTriSampledHeightFieldCollection> {
-  using HkpSaver::HkpSaver;
+struct hkpTriSampledHeightFieldCollectionWriter
+    : HkpWriter<hkpTriSampledHeightFieldCollection> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(TriHeightFieldCollectionFixedSize(rule.version));
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteField<uint8>(fixed, 16, in->GetDisableWelding() ? 1 : 0);
     WriteField<uint8>(fixed, 17, 2);
     WriteField<float>(fixed, 28, in->GetRadius());
@@ -2562,13 +2584,13 @@ struct hkpTriSampledHeightFieldCollectionSaver
   }
 };
 
-struct hkpTriSampledHeightFieldBvTreeShapeSaver
-    : HkpSaver<hkpTriSampledHeightFieldBvTreeShape> {
-  using HkpSaver::HkpSaver;
+struct hkpTriSampledHeightFieldBvTreeShapeWriter
+    : HkpWriter<hkpTriSampledHeightFieldBvTreeShape> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(32);
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteField<uint8>(fixed, 24, in->GetWantAabbRejectionTest() ? 1 : 0);
 
     const size_t begin = wr.Tell();
@@ -2580,8 +2602,8 @@ struct hkpTriSampledHeightFieldBvTreeShapeSaver
   }
 };
 
-struct hkpMoppCodeSaver : HkpSaver<hkpMoppCode> {
-  using HkpSaver::HkpSaver;
+struct hkpMoppCodeWriter : HkpWriter<hkpMoppCode> {
+  using HkpWriter::HkpWriter;
 
   std::vector<uint8> Data() const {
     auto found = GeneratedMoppCode().find(in);
@@ -2620,11 +2642,11 @@ struct hkpMoppCodeSaver : HkpSaver<hkpMoppCode> {
   }
 };
 
-struct hkpMoppBvTreeShapeSaver : HkpSaver<hkpMoppBvTreeShape> {
-  using HkpSaver::HkpSaver;
+struct hkpMoppBvTreeShapeWriter : HkpWriter<hkpMoppBvTreeShape> {
+  using HkpWriter::HkpWriter;
 
-  hkpMoppBvTreeShapeSaver(CRule rule_, const hkpMoppBvTreeShape *in_)
-      : HkpSaver(rule_, in_) {
+  hkpMoppBvTreeShapeWriter(CRule rule_, const hkpMoppBvTreeShape *in_)
+      : HkpWriter(rule_, in_) {
     const auto *code = in->GetCode();
     if (code &&
         (rule.version == HK550 || !code->GetData() || !code->GetDataSize())) {
@@ -2639,7 +2661,7 @@ struct hkpMoppBvTreeShapeSaver : HkpSaver<hkpMoppBvTreeShape> {
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kMoppBvTreeShapeFixedSize);
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteField<uint32>(fixed, MoppCodePointerOffset(rule.version), 0);
     WriteField<uint32>(fixed, 52, 0);
 
@@ -2655,8 +2677,8 @@ struct hkpMoppBvTreeShapeSaver : HkpSaver<hkpMoppBvTreeShape> {
   }
 };
 
-struct hkpStaticCompoundShapeSaver : HkpSaver<hkpStaticCompoundShape> {
-  using HkpSaver::HkpSaver;
+struct hkpStaticCompoundShapeWriter : HkpWriter<hkpStaticCompoundShape> {
+  using HkpWriter::HkpWriter;
 
   std::vector<hkpStaticCompoundShapeInstance> Instances() const {
     std::vector<hkpStaticCompoundShapeInstance> output;
@@ -2725,7 +2747,7 @@ struct hkpStaticCompoundShapeSaver : HkpSaver<hkpStaticCompoundShape> {
     auto fixed = Fixed(kStaticCompoundShapeFixedSize);
     const Bounds treeBounds = nodes.empty() ? Bounds{} : nodes.front().bounds;
 
-    WriteField<uint32>(fixed, 8, 0x00000400u);
+    WriteShapeBase(fixed, rule, in);
     WriteField<uint32>(fixed, 16, 2);
     WriteField<uint8>(fixed, 24, 14);
     WriteArrayHeader(fixed, 32, instances.size(), rule.version);
@@ -2765,9 +2787,285 @@ struct hkpStaticCompoundShapeSaver : HkpSaver<hkpStaticCompoundShape> {
   }
 };
 
-struct hkpStorageExtendedMeshShapeSaver
-    : HkpSaver<hkpStorageExtendedMeshShape> {
-  using HkpSaver::HkpSaver;
+struct hkpBvCompressedMeshShapeWriter
+    : HkpWriter<hkpBvCompressedMeshShape> {
+  using HkpWriter::HkpWriter;
+
+  Bounds ComputeBounds() const {
+    Bounds bounds;
+    for (size_t i = 0; i < in->GetNumBvcVertices(); i++) {
+      bounds.Add(in->GetBvcVertex(i));
+    }
+    if (!bounds.count) {
+      bounds.Add(in->GetBvcAabbMin());
+      bounds.Add(in->GetBvcAabbMax());
+    }
+    return bounds;
+  }
+
+  std::vector<BvcSectionData> BuildSections(std::vector<uint32> &filterPalette,
+                                            std::vector<uint32> &userPalette) const {
+    constexpr size_t kMaxSectionPrimitives = 128;
+    constexpr size_t kMaxSectionVertices = 255;
+    std::vector<BvcSectionData> sections;
+    BvcSectionData current;
+    std::unordered_map<uint32, uint8> localMap;
+    uint32 currentSourceSection = (std::numeric_limits<uint32>::max)();
+
+    auto finishSection = [&]() {
+      if (current.primitives.empty()) {
+        return;
+      }
+
+      for (const auto &vertex : current.vertices) {
+        current.bounds.Add(vertex);
+      }
+
+      std::vector<Bounds> primitiveBounds;
+      primitiveBounds.reserve(current.primitives.size());
+      for (const auto &primitive : current.primitives) {
+        Bounds bounds;
+        bounds.Add(current.vertices[primitive.indices[0]]);
+        bounds.Add(current.vertices[primitive.indices[1]]);
+        bounds.Add(current.vertices[primitive.indices[2]]);
+        if (primitive.indices[2] != primitive.indices[3]) {
+          bounds.Add(current.vertices[primitive.indices[3]]);
+        }
+        primitiveBounds.emplace_back(bounds);
+      }
+
+      std::vector<size_t> ids(primitiveBounds.size());
+      for (size_t i = 0; i < ids.size(); i++) {
+        ids[i] = i;
+      }
+      std::vector<StaticTreeNode> nodes;
+      BuildStaticTreeNodes(primitiveBounds, std::move(ids), nodes);
+      current.nodes = BuildBvcAabbTreeBuffer(nodes, kBvcSectionTreeNodeSize);
+
+      current.packedVertices.reserve(current.vertices.size());
+      for (const auto &vertex : current.vertices) {
+        current.packedVertices.emplace_back(BvcPackVertex32(current.bounds, vertex));
+      }
+
+      sections.emplace_back(std::move(current));
+      current = {};
+      localMap.clear();
+      currentSourceSection = (std::numeric_limits<uint32>::max)();
+    };
+
+    for (size_t i = 0; i < in->GetNumBvcTriangles(); i++) {
+      const auto triangle = in->GetBvcTriangle(i);
+      uint32 indices[4] = {triangle.a, triangle.b, triangle.c, triangle.c};
+      const uint32 sourceSection =
+          triangle.primitiveIndex != 0xffffffffu
+              ? (triangle.primitiveIndex >> 8)
+              : (std::numeric_limits<uint32>::max)();
+      bool isQuad = false;
+      if (i + 1 < in->GetNumBvcTriangles()) {
+        const auto nextTriangle = in->GetBvcTriangle(i + 1);
+        if (triangle.primitiveIndex != 0xffffffffu &&
+            triangle.primitiveIndex == nextTriangle.primitiveIndex &&
+            triangle.triangleIndex == 0 && nextTriangle.triangleIndex == 1 &&
+            nextTriangle.filterInfo == triangle.filterInfo &&
+            nextTriangle.userData == triangle.userData &&
+            nextTriangle.a == triangle.a && nextTriangle.b == triangle.c &&
+            nextTriangle.c != triangle.a && nextTriangle.c != triangle.b &&
+            nextTriangle.c != triangle.c) {
+          indices[3] = nextTriangle.c;
+          isQuad = true;
+        }
+      }
+      if (indices[0] == indices[1] || indices[1] == indices[2] ||
+          indices[2] == indices[0]) {
+        continue;
+      }
+      size_t newVertices = 0;
+      const size_t numIndices = isQuad ? 4 : 3;
+      for (size_t j = 0; j < numIndices; j++) {
+        const uint32 index = indices[j];
+        if (localMap.find(index) == localMap.end()) {
+          newVertices++;
+        }
+      }
+
+      if (!current.primitives.empty() &&
+          sourceSection != (std::numeric_limits<uint32>::max)() &&
+          currentSourceSection != sourceSection) {
+        finishSection();
+      }
+      if (current.primitives.empty()) {
+        currentSourceSection = sourceSection;
+      }
+
+      if (!current.primitives.empty() &&
+          (current.primitives.size() >= kMaxSectionPrimitives ||
+           current.vertices.size() + newVertices > kMaxSectionVertices)) {
+        finishSection();
+        currentSourceSection = sourceSection;
+      }
+
+      BvcPrimitiveRecord primitive;
+      for (size_t j = 0; j < numIndices; j++) {
+        const uint32 index = indices[j];
+        auto found = localMap.find(index);
+        if (found == localMap.end()) {
+          const uint8 localIndex = static_cast<uint8>(current.vertices.size());
+          localMap.emplace(index, localIndex);
+          current.vertices.emplace_back(in->GetBvcVertex(index));
+          primitive.indices[j] = localIndex;
+        } else {
+          primitive.indices[j] = found->second;
+        }
+      }
+      if (!isQuad) {
+        primitive.indices[3] = primitive.indices[2];
+      }
+      primitive.hasSecondTriangle = isQuad;
+      current.primitives.emplace_back(primitive);
+      if (isQuad) {
+        i++;
+      }
+
+      const uint32 filterIndex = BvcPaletteIndex(filterPalette, triangle.filterInfo);
+      const uint32 userIndex = BvcPaletteIndex(userPalette, triangle.userData);
+      const uint32 dataValue = (userIndex << 8) | filterIndex;
+      if (!current.dataRuns.empty() &&
+          current.dataRuns.back().value == dataValue &&
+          current.dataRuns.back().index + current.dataRuns.back().count ==
+              current.primitives.size() - 1 &&
+          current.dataRuns.back().count < 0xff) {
+        current.dataRuns.back().count++;
+      } else {
+        BvcDataRunRecord run;
+        run.value = dataValue;
+        run.index = static_cast<uint8>(current.primitives.size() - 1);
+        run.count = 1;
+        current.dataRuns.emplace_back(run);
+      }
+    }
+
+    finishSection();
+
+    size_t firstPackedVertex = 0;
+    size_t firstPrimitive = 0;
+    size_t firstDataRun = 0;
+    for (auto &section : sections) {
+      section.firstPackedVertex = firstPackedVertex;
+      section.firstPrimitive = firstPrimitive;
+      section.firstDataRun = firstDataRun;
+      firstPackedVertex += section.packedVertices.size();
+      firstPrimitive += section.primitives.size();
+      firstDataRun += section.dataRuns.size();
+    }
+    return sections;
+  }
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const {
+    std::vector<uint32> filterPalette;
+    std::vector<uint32> userPalette;
+    auto sections = BuildSections(filterPalette, userPalette);
+
+    std::vector<Bounds> sectionBounds;
+    sectionBounds.reserve(sections.size());
+    for (const auto &section : sections) {
+      sectionBounds.emplace_back(section.bounds);
+    }
+    std::vector<size_t> sectionIds(sectionBounds.size());
+    for (size_t i = 0; i < sectionIds.size(); i++) {
+      sectionIds[i] = i;
+    }
+    std::vector<StaticTreeNode> parentNodes;
+    if (!sectionIds.empty()) {
+      BuildStaticTreeNodes(sectionBounds, std::move(sectionIds), parentNodes);
+    }
+    const auto parentTree = BuildBvcAabbTreeBuffer(parentNodes,
+                                                  kBvcParentTreeNodeSize);
+    auto sectionRecords = BvcSectionBuffer(sections, rule.version);
+    const auto primitives = BvcPrimitiveBuffer(sections);
+    const auto packedVertices = BvcPackedVertexBuffer(sections);
+    auto dataRuns = BvcDataRunBuffer(sections);
+
+    auto fixed = Fixed(kBvcShapeFixedSize);
+    WriteShapeBase(fixed, rule, in);
+    WriteField<uint8>(fixed, 16, 3);
+    WriteField<float>(fixed, 24, in->GetConvexRadius());
+    WriteField<uint8>(fixed, 28, in->GetWeldingType());
+    WriteField<uint8>(fixed, 29, !filterPalette.empty());
+    WriteField<uint8>(fixed, 30, !userPalette.empty());
+    WriteArrayHeader(fixed, 32, filterPalette.size(), rule.version);
+    WriteArrayHeader(fixed, 44, userPalette.size(), rule.version);
+    WriteArrayHeader(fixed, 56, 0, rule.version);
+
+    const Bounds bounds = ComputeBounds();
+    const Vector4A16 domainMin(bounds.min[0], bounds.min[1], bounds.min[2],
+                               0.0f);
+    const Vector4A16 domainMax(bounds.max[0], bounds.max[1], bounds.max[2],
+                               0.0f);
+    WriteVectorField(fixed, kBvcTreeOffset + 16, domainMin);
+    WriteVectorField(fixed, kBvcTreeOffset + 32, domainMax);
+    const size_t numPrimitiveKeys = in->GetNumBvcPrimitiveKeys();
+    const uint32 maxKeyValue = BvcMaxKeyValue(sections);
+    uint32 bitsPerKey = 0;
+    while (bitsPerKey < 32 && (maxKeyValue >> bitsPerKey)) {
+      bitsPerKey++;
+    }
+    WriteField<uint32>(fixed, kBvcTreeOffset + 48,
+                       static_cast<uint32>(numPrimitiveKeys));
+    WriteField<uint32>(fixed, kBvcTreeOffset + 52, bitsPerKey);
+    WriteField<uint32>(fixed, kBvcTreeOffset + 56, maxKeyValue);
+    WriteArrayHeader(fixed, kBvcTreeOffset + 0,
+                     parentTree.size() / kBvcParentTreeNodeSize, rule.version);
+    WriteArrayHeader(fixed, kBvcTreeOffset + 60, sections.size(), rule.version);
+    WriteArrayHeader(fixed, kBvcTreeOffset + 72,
+                     primitives.size() / kBvcPrimitiveSize, rule.version);
+    WriteArrayHeader(fixed, kBvcTreeOffset + 84, 0, rule.version);
+    WriteArrayHeader(fixed, kBvcTreeOffset + 96, packedVertices.size(),
+                     rule.version);
+    WriteArrayHeader(fixed, kBvcTreeOffset + 108, 0, rule.version);
+    WriteArrayHeader(fixed, kBvcTreeOffset + 120,
+                     dataRuns.size() / kBvcDataRunSize, rule.version);
+
+    const size_t begin = wr.Tell();
+    WriteBuffer(wr, fixed);
+
+    SaveValueArray(wr, fixups, begin, 32, filterPalette.data(),
+                   filterPalette.size(), sizeof(uint32));
+    SaveValueArray(wr, fixups, begin, 44, userPalette.data(),
+                   userPalette.size(), sizeof(uint32));
+    SaveValueArray(wr, fixups, begin, kBvcTreeOffset + 0, parentTree.data(),
+                   parentTree.size() / kBvcParentTreeNodeSize,
+                   kBvcParentTreeNodeSize);
+
+    if (!sectionRecords.empty()) {
+      wr.ApplyPadding();
+      const size_t sectionsBegin = wr.Tell();
+      fixups.locals.emplace_back(begin + kBvcTreeOffset + 60, sectionsBegin);
+      WriteBuffer(wr, sectionRecords);
+      for (size_t i = 0; i < sections.size(); i++) {
+        const auto &section = sections[i];
+        if (section.nodes.empty()) {
+          continue;
+        }
+        wr.ApplyPadding();
+        fixups.locals.emplace_back(sectionsBegin + i * kBvcSectionSize,
+                                   wr.Tell());
+        WriteBytes(wr, section.nodes.data(), section.nodes.size());
+      }
+    }
+
+    SaveValueArray(wr, fixups, begin, kBvcTreeOffset + 72, primitives.data(),
+                   primitives.size() / kBvcPrimitiveSize, kBvcPrimitiveSize);
+    SaveValueArray(wr, fixups, begin, kBvcTreeOffset + 96,
+                   packedVertices.data(), packedVertices.size(),
+                   sizeof(uint32));
+    SaveValueArray(wr, fixups, begin, kBvcTreeOffset + 120, dataRuns.data(),
+                   dataRuns.size() / kBvcDataRunSize, kBvcDataRunSize);
+  }
+};
+
+struct hkpStorageExtendedMeshShapeWriter
+    : HkpWriter<hkpStorageExtendedMeshShape> {
+  using HkpWriter::HkpWriter;
 
   Bounds ComputeBounds() const {
     Bounds bounds;
@@ -2811,46 +3109,6 @@ struct hkpStorageExtendedMeshShapeSaver
   }
 
   std::vector<uint16> WeldingInfo() const {
-    if (const auto *raw = RawCollision(in)) {
-      if (const char *rawData = raw->GetRawCollisionData()) {
-        const CRule rawRule = raw->GetRawCollisionRule();
-        const auto swapEndian = ValueNeedsEndianSwap(in);
-        const auto *rawClass = dynamic_cast<const hkVirtualClass *>(in);
-        const IhkPackFile *rawHeader = rawClass ? rawClass->header : nullptr;
-        const ArrayViewWithMode candidates[] = {
-            {ReadArray(rawData, StorageWeldingArrayOffset(rawRule.version),
-                       rawRule.x64, swapEndian),
-             rawRule.x64, swapEndian},
-            {ReadArray(rawData, StorageWeldingArrayOffset(rawRule.version),
-                       !rawRule.x64, swapEndian),
-             !rawRule.x64, swapEndian},
-            {ReadArray(rawData, StorageWeldingArrayOffset(rawRule.version),
-                       rawRule.x64, !swapEndian),
-             rawRule.x64, !swapEndian},
-            {ReadArray(rawData, StorageWeldingArrayOffset(rawRule.version),
-                       !rawRule.x64, !swapEndian),
-             !rawRule.x64, !swapEndian},
-        };
-
-        for (const auto &rawWelding : candidates) {
-          if (!ArrayViewReasonable(rawWelding.view, 1u << 24) ||
-              !ArrayViewCoveredByHeader(rawWelding, sizeof(uint16), rawHeader)) {
-            continue;
-          }
-
-          std::vector<uint16> output;
-          output.reserve(rawWelding.view.count);
-          for (size_t i = 0; i < rawWelding.view.count; i++) {
-            output.emplace_back(ReadValue<uint16>(
-                rawWelding.view.data + i * sizeof(uint16), 0,
-                rawWelding.swapEndian));
-          }
-          return output;
-        }
-        return {};
-      }
-    }
-
     size_t numTriangles = 0;
     for (auto subpart : in->MeshSubparts()) {
       if (subpart) {
@@ -2858,197 +3116,6 @@ struct hkpStorageExtendedMeshShapeSaver
       }
     }
     return std::vector<uint16>(numTriangles, 0);
-  }
-
-  struct RawStorageContent {
-    std::vector<char> fixed;
-    std::vector<char> triangles;
-    std::vector<char> shapes;
-    std::vector<char> welding;
-    uint32 numTriangles{};
-    uint32 numShapes{};
-    uint32 numWelding{};
-  };
-
-  const hkpRawCollisionBytes *RawMatchingOldX86Storage() const {
-    if (rule.x64) {
-      return nullptr;
-    }
-
-    const auto *raw = RawCollision(in);
-    if (!raw || !raw->GetRawCollisionData()) {
-      return nullptr;
-    }
-
-    const CRule rawRule = raw->GetRawCollisionRule();
-    if (rawRule.version != rule.version || rawRule.x64) {
-      return nullptr;
-    }
-
-    return raw;
-  }
-
-  std::vector<char> CopyRawArray(const ArrayView &view,
-                                 size_t elementSize) const {
-    size_t totalSize = 0;
-    if (!MultiplySize(static_cast<size_t>(view.count), elementSize,
-                      totalSize)) {
-      return {};
-    }
-    if (!totalSize) {
-      return {};
-    }
-    if (!view.data) {
-      return {};
-    }
-
-    return std::vector<char>(view.data, view.data + totalSize);
-  }
-
-  std::unique_ptr<RawStorageContent> BuildRawStorage() const {
-    const auto *raw = RawMatchingOldX86Storage();
-    if (!raw) {
-      return nullptr;
-    }
-
-    const char *rawData = raw->GetRawCollisionData();
-    const auto *rawClass = dynamic_cast<const hkVirtualClass *>(in);
-    const IhkPackFile *rawHeader = rawClass ? rawClass->header : nullptr;
-    if (!PointerCoveredByHeader(rawHeader, rawData,
-                           StorageMeshShapeFixedSize(rule.version))) {
-      return nullptr;
-    }
-
-    const ArrayView rawTriangles =
-        ReadArrayX86(rawData, StorageTrianglesArrayOffset(rule.version));
-    const ArrayView rawShapes =
-        ReadArrayX86(rawData, StorageShapeRecordsArrayOffset(rule.version));
-    const ArrayView rawWelding =
-        ReadArrayX86(rawData, StorageWeldingArrayOffset(rule.version));
-
-    size_t rawTrianglesSize = 0;
-    size_t rawShapesSize = 0;
-    size_t rawWeldingSize = 0;
-    if (!MultiplySize(static_cast<size_t>(rawTriangles.count),
-                      TriangleSubpartFixedSize(rule.version),
-                      rawTrianglesSize) ||
-        !MultiplySize(static_cast<size_t>(rawShapes.count),
-                      ShapeSubpartFixedSize(rule.version), rawShapesSize) ||
-        !MultiplySize(static_cast<size_t>(rawWelding.count), sizeof(uint16),
-                      rawWeldingSize)) {
-      return nullptr;
-    }
-
-    if ((rawTrianglesSize &&
-         !PointerCoveredByHeader(rawHeader, rawTriangles.data, rawTrianglesSize)) ||
-        (rawShapesSize &&
-         !PointerCoveredByHeader(rawHeader, rawShapes.data, rawShapesSize)) ||
-        (rawWeldingSize &&
-         !PointerCoveredByHeader(rawHeader, rawWelding.data, rawWeldingSize))) {
-      return nullptr;
-    }
-
-    auto content = std::make_unique<RawStorageContent>();
-    content->triangles =
-        CopyRawArray(rawTriangles, TriangleSubpartFixedSize(rule.version));
-    content->shapes =
-        CopyRawArray(rawShapes, ShapeSubpartFixedSize(rule.version));
-    content->welding = CopyRawArray(rawWelding, sizeof(uint16));
-    content->numTriangles = rawTriangles.count;
-    content->numShapes = rawShapes.count;
-    content->numWelding = rawWelding.count;
-
-    if ((content->numTriangles && content->triangles.empty()) ||
-        (content->numShapes && content->shapes.empty()) ||
-        (content->numWelding && content->welding.empty())) {
-      return nullptr;
-    }
-
-    switch (rule.version) {
-    case HK550:
-      for (size_t i = 0; i < content->numTriangles; i++) {
-        ClearOldTriangleSubpartPointers(content->triangles,
-                                        i * kTriangleSubpartFixedSize);
-      }
-
-      for (size_t i = 0; i < content->numShapes; i++) {
-        const size_t record = i * kShapeSubpartFixedSize;
-        const auto *subpart =
-            i < in->GetNumShapeSubparts() ? in->GetShapeSubpart(i) : nullptr;
-        ClearOldShapeSubpartPointers(content->shapes, record);
-        WriteSimpleArrayHeader(content->shapes, record + 16,
-                               subpart ? subpart->GetNumShapes() : 0);
-      }
-      break;
-    default:
-      break;
-    }
-
-    content->fixed = Fixed(StorageMeshShapeFixedSize(rule.version));
-    if (rule.version == HK550) {
-      WriteSimpleArrayHeader(content->fixed,
-                             StorageTrianglesArrayOffset(rule.version),
-                             content->numTriangles);
-      WriteSimpleArrayHeader(content->fixed,
-                             StorageShapeRecordsArrayOffset(rule.version),
-                             content->numShapes);
-    } else {
-      WriteArrayHeader(content->fixed,
-                       StorageTrianglesArrayOffset(rule.version),
-                       content->numTriangles, rule.version);
-      WriteArrayHeader(content->fixed,
-                       StorageShapeRecordsArrayOffset(rule.version),
-                       content->numShapes, rule.version);
-    }
-    WriteArrayHeader(content->fixed, StorageWeldingArrayOffset(rule.version),
-                     content->numWelding, rule.version);
-    switch (rule.version) {
-    case HK550:
-      ClearOldTriangleSubpartPointers(content->fixed, 112);
-      break;
-    default:
-      break;
-    }
-    WriteArrayHeader(content->fixed, StorageMeshArrayOffset(rule.version),
-                     in->GetNumMeshSubparts(), rule.version);
-    WriteArrayHeader(content->fixed, StorageShapeArrayOffset(rule.version),
-                     in->GetNumShapeSubparts(), rule.version);
-    return content;
-  }
-
-  void SaveRawStorage(BinWritterRef_e wr, hkFixups &fixups,
-                      const RawStorageContent &content) const {
-    const size_t begin = wr.Tell();
-    WriteBuffer(wr, content.fixed);
-
-    if (!content.triangles.empty()) {
-      wr.ApplyPadding();
-      fixups.locals.emplace_back(
-          begin + StorageTrianglesArrayOffset(rule.version), wr.Tell());
-      WriteBuffer(wr, content.triangles);
-    }
-
-    size_t shapeRecordsBegin = 0;
-    if (!content.shapes.empty()) {
-      wr.ApplyPadding();
-      shapeRecordsBegin = wr.Tell();
-      fixups.locals.emplace_back(
-          begin + StorageShapeRecordsArrayOffset(rule.version),
-          shapeRecordsBegin);
-      WriteBuffer(wr, content.shapes);
-      SaveShapeSubpartChildArrays(wr, fixups, shapeRecordsBegin,
-                                  content.numShapes);
-    }
-
-    SaveValueArray(wr, fixups, begin, StorageWeldingArrayOffset(rule.version),
-                   content.welding.data(), content.numWelding,
-                   sizeof(uint16));
-    SavePointerArray(wr, fixups, begin, StorageMeshArrayOffset(rule.version),
-                     in->GetNumMeshSubparts(),
-                     [&](size_t i) { return in->GetMeshSubpart(i); });
-    SavePointerArray(wr, fixups, begin, StorageShapeArrayOffset(rule.version),
-                     in->GetNumShapeSubparts(),
-                     [&](size_t i) { return in->GetShapeSubpart(i); });
   }
 
   void SaveShapeSubpartChildArrays(BinWritterRef_e wr, hkFixups &fixups,
@@ -3077,11 +3144,6 @@ struct hkpStorageExtendedMeshShapeSaver
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
-    if (auto rawStorage = BuildRawStorage()) {
-      SaveRawStorage(wr, fixups, *rawStorage);
-      return;
-    }
-
     auto fixed = Fixed(StorageMeshShapeFixedSize(rule.version));
     auto triangles = TriangleSubparts();
     auto shapes = ShapeSubparts();
@@ -3093,19 +3155,6 @@ struct hkpStorageExtendedMeshShapeSaver
     Vector4A16 center = bounds.Center();
     uint8 collectionFlags = 1;
     uint8 weldingType = 0;
-    if (const auto *raw = RawCollision(in)) {
-      const CRule rawRule = raw->GetRawCollisionRule();
-      if (const char *rawData = raw->GetRawCollisionData();
-          rawData && !rawRule.x64) {
-        halfExtents = RawVectorField(
-            in, StorageAabbHalfExtentsOffset(rawRule.version), halfExtents);
-        center =
-            RawVectorField(in, StorageAabbCenterOffset(rawRule.version), center);
-        collectionFlags = static_cast<uint8>(rawData[20]);
-        weldingType =
-            static_cast<uint8>(rawData[StorageWeldingTypeOffset(rawRule.version)]);
-      }
-    }
 
     size_t cachedNumChildShapes = 0;
     for (auto subpart : in->MeshSubparts()) {
@@ -3119,7 +3168,7 @@ struct hkpStorageExtendedMeshShapeSaver
       }
     }
 
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteField<uint8>(fixed, 20, collectionFlags);
     if (rule.version == HK550) {
       WriteField<int32>(fixed, 24, 12);
@@ -3211,9 +3260,9 @@ struct hkpStorageExtendedMeshShapeSaver
   }
 };
 
-struct hkpStorageExtendedMeshShapeMeshSubpartStorageSaver
-    : HkpSaver<hkpStorageExtendedMeshShapeMeshSubpartStorage> {
-  using HkpSaver::HkpSaver;
+struct hkpStorageExtendedMeshShapeMeshSubpartStorageWriter
+    : HkpWriter<hkpStorageExtendedMeshShapeMeshSubpartStorage> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(MeshSubpartStorageFixedSize(rule.version));
@@ -3249,9 +3298,9 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageSaver
   }
 };
 
-struct hkpStorageExtendedMeshShapeShapeSubpartStorageSaver
-    : HkpSaver<hkpStorageExtendedMeshShapeShapeSubpartStorage> {
-  using HkpSaver::HkpSaver;
+struct hkpStorageExtendedMeshShapeShapeSubpartStorageWriter
+    : HkpWriter<hkpStorageExtendedMeshShapeShapeSubpartStorage> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kShapeSubpartStorageFixedSize);
@@ -3267,8 +3316,8 @@ struct hkpStorageExtendedMeshShapeShapeSubpartStorageSaver
   }
 };
 
-struct hkpListShapeSaver : HkpSaver<hkpListShape> {
-  using HkpSaver::HkpSaver;
+struct hkpListShapeWriter : HkpWriter<hkpListShape> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kListShapeFixedSize);
@@ -3278,17 +3327,8 @@ struct hkpListShapeSaver : HkpSaver<hkpListShape> {
     }
     Vector4A16 halfExtents = bounds.HalfExtents(0.05f);
     Vector4A16 center = bounds.Center();
-    if (const auto *raw = RawCollision(in)) {
-      const CRule rawRule = raw->GetRawCollisionRule();
-      if (const char *rawData = raw->GetRawCollisionData();
-          rawData && !rawRule.x64) {
-        halfExtents =
-            ReadValue<Vector4A16>(rawData, 48, ValueNeedsEndianSwap(in));
-        center = ReadValue<Vector4A16>(rawData, 64, ValueNeedsEndianSwap(in));
-      }
-    }
 
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteField<uint8>(fixed, 20, 0);
     WriteArrayHeader(fixed, 24, in->GetNumChildren(), rule.version);
     WriteVectorField(fixed, 48, halfExtents);
@@ -3317,14 +3357,13 @@ struct hkpListShapeSaver : HkpSaver<hkpListShape> {
   }
 };
 
-struct hkpConvexTransformShapeSaver : HkpSaver<hkpConvexTransformShape> {
-  using HkpSaver::HkpSaver;
+struct hkpConvexTransformShapeWriter : HkpWriter<hkpConvexTransformShape> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kConvexTransformShapeFixedSize);
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
-    WriteField<float>(fixed, ConvexRadiusOffset(),
-                      RawFloatField(in, ConvexRadiusOffset(), 0.0f));
+    WriteShapeBase(fixed, rule, in);
+    WriteField<float>(fixed, ConvexRadiusOffset(), 0.0f);
     WriteField<uint32>(fixed, 24, 0);
     WriteMatrixField(fixed, 32, in->GetTransform());
 
@@ -3336,14 +3375,13 @@ struct hkpConvexTransformShapeSaver : HkpSaver<hkpConvexTransformShape> {
   }
 };
 
-struct hkpConvexTranslateShapeSaver : HkpSaver<hkpConvexTranslateShape> {
-  using HkpSaver::HkpSaver;
+struct hkpConvexTranslateShapeWriter : HkpWriter<hkpConvexTranslateShape> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kConvexTranslateShapeFixedSize);
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
-    WriteField<float>(fixed, ConvexRadiusOffset(),
-                      RawFloatField(in, ConvexRadiusOffset(), 0.0f));
+    WriteShapeBase(fixed, rule, in);
+    WriteField<float>(fixed, ConvexRadiusOffset(), 0.0f);
     WriteField<uint32>(fixed, 24, 0);
     WriteVectorField(fixed, 32, in->GetTranslation());
 
@@ -3355,24 +3393,24 @@ struct hkpConvexTranslateShapeSaver : HkpSaver<hkpConvexTranslateShape> {
   }
 };
 
-struct hkpBoxShapeSaver : HkpSaver<hkpBoxShape> {
-  using HkpSaver::HkpSaver;
+struct hkpBoxShapeWriter : HkpWriter<hkpBoxShape> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &) const {
     auto fixed = Fixed(kBoxShapeFixedSize);
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteField<float>(fixed, ConvexRadiusOffset(), in->GetRadius());
     WriteVectorField(fixed, 32, in->GetHalfExtents());
     WriteBuffer(wr, fixed);
   }
 };
 
-struct hkpCylinderShapeSaver : HkpSaver<hkpCylinderShape> {
-  using HkpSaver::HkpSaver;
+struct hkpCylinderShapeWriter : HkpWriter<hkpCylinderShape> {
+  using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &) const {
     auto fixed = Fixed(kCylinderShapeFixedSize);
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteField<float>(fixed, 20, in->GetRadius());
     WriteVectorField(fixed, 32, in->GetVertexA());
     WriteVectorField(fixed, 48, in->GetVertexB());
@@ -3381,8 +3419,8 @@ struct hkpCylinderShapeSaver : HkpSaver<hkpCylinderShape> {
   }
 };
 
-struct hkpConvexVerticesShapeSaver : HkpSaver<hkpConvexVerticesShape> {
-  using HkpSaver::HkpSaver;
+struct hkpConvexVerticesShapeWriter : HkpWriter<hkpConvexVerticesShape> {
+  using HkpWriter::HkpWriter;
 
   struct FourVectors {
     Vector4A16 x;
@@ -3427,7 +3465,7 @@ struct hkpConvexVerticesShapeSaver : HkpSaver<hkpConvexVerticesShape> {
     CRule arrayRule = rule;
     arrayRule.x64 = false;
 
-    WriteField<uint32>(fixed, 12, in->GetShapeType());
+    WriteShapeBase(fixed, rule, in);
     WriteField<float>(fixed, ConvexRadiusOffset(), in->GetRadius());
     WriteVectorField(fixed, 32, in->GetAabbHalfExtents());
     WriteVectorField(fixed, 48, in->GetAabbCenter());
@@ -3451,7 +3489,7 @@ struct hkpConvexVerticesShapeSaver : HkpSaver<hkpConvexVerticesShape> {
 struct hkpPhysicsDataMidInterface : hkpMidBase<hkpPhysicsDataInternalInterface> {
   using Base = hkpMidBase<hkpPhysicsDataInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpPhysicsDataSaver> saver;
+  std::unique_ptr<hkpPhysicsDataWriter> writer;
 
   static constexpr uint32 kMaxSystems = 1 << 14;
 
@@ -3482,12 +3520,12 @@ struct hkpPhysicsDataMidInterface : hkpMidBase<hkpPhysicsDataInternalInterface> 
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpPhysicsDataSaver>(
+    writer = std::make_unique<hkpPhysicsDataWriter>(
         this->rule, checked_deref_cast<const hkpPhysicsData>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -3495,7 +3533,7 @@ struct hkpPhysicsSystemMidInterface
     : hkpMidBase<hkpPhysicsSystemInternalInterface> {
   using Base = hkpMidBase<hkpPhysicsSystemInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpPhysicsSystemSaver> saver;
+  std::unique_ptr<hkpPhysicsSystemWriter> writer;
 
   static constexpr uint32 kMaxRigidBodies = 1 << 16;
 
@@ -3539,19 +3577,19 @@ struct hkpPhysicsSystemMidInterface
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpPhysicsSystemSaver>(
+    writer = std::make_unique<hkpPhysicsSystemWriter>(
         this->rule, checked_deref_cast<const hkpPhysicsSystem>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
 struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   using Base = hkpMidBase<hkpRigidBodyInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpRigidBodySaver> saver;
+  std::unique_ptr<hkpRigidBodyWriter> writer;
 
   static constexpr uint32 kMaxProperties = 1 << 16;
 
@@ -3756,31 +3794,31 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpRigidBodySaver>(
+    writer = std::make_unique<hkpRigidBodyWriter>(
         this->rule, checked_deref_cast<const hkpRigidBody>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
 struct hkpShapeMidInterface : hkpMidBase<hkpShapeInternalInterface> {
   using Base = hkpMidBase<hkpShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpShapeSaver> saver;
+  std::unique_ptr<hkpShapeWriter> writer;
 
   uint32 GetShapeType() const override {
-    return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
+    return 17;
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpShapeSaver>(
+    writer = std::make_unique<hkpShapeWriter>(
         this->rule, checked_deref_cast<const hkpShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -3789,6 +3827,9 @@ template <class C> struct hkpSampledHeightFieldMidBase : hkpMidBase<C> {
   using Base::Base;
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 12;
+    }
     return ReadValue<uint32>(this->data, 12, this->DataNeedsEndianSwap());
   }
   uint32 GetXRes() const override {
@@ -3830,14 +3871,14 @@ struct hkpSampledHeightFieldShapeMidInterface
   using Base =
       hkpSampledHeightFieldMidBase<hkpSampledHeightFieldShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpSampledHeightFieldShapeSaver> saver;
+  std::unique_ptr<hkpSampledHeightFieldShapeWriter> writer;
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpSampledHeightFieldShapeSaver>(
+    writer = std::make_unique<hkpSampledHeightFieldShapeWriter>(
         this->rule, checked_deref_cast<const hkpSampledHeightFieldShape>(other));
   }
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -3847,7 +3888,7 @@ struct hkpStorageSampledHeightFieldShapeMidInterface
   using Base = hkpSampledHeightFieldMidBase<
       hkpStorageSampledHeightFieldShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpStorageSampledHeightFieldShapeSaver> saver;
+  std::unique_ptr<hkpStorageSampledHeightFieldShapeWriter> writer;
   mutable const float *cachedSource = nullptr;
   mutable std::vector<float> cachedStorage;
 
@@ -3865,13 +3906,13 @@ struct hkpStorageSampledHeightFieldShapeMidInterface
   }
   const float *GetStorage() const override {
     const auto values = GetStorageArray();
-    const auto *raw = reinterpret_cast<const float *>(values.view.data);
-    if (!raw || !values.swapEndian) {
-      return raw;
+    const auto *source = reinterpret_cast<const float *>(values.view.data);
+    if (!source || !values.swapEndian) {
+      return source;
     }
-    if (cachedSource != raw || cachedStorage.size() != values.view.count) {
-      cachedSource = raw;
-      cachedStorage.assign(raw, raw + values.view.count);
+    if (cachedSource != source || cachedStorage.size() != values.view.count) {
+      cachedSource = source;
+      cachedStorage.assign(source, source + values.view.count);
       for (auto &value : cachedStorage) {
         value = ByteSwapFloat(value);
       }
@@ -3883,11 +3924,11 @@ struct hkpStorageSampledHeightFieldShapeMidInterface
     return values && id < GetNumHeights() ? values[id] : 0.0f;
   }
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpStorageSampledHeightFieldShapeSaver>(
+    writer = std::make_unique<hkpStorageSampledHeightFieldShapeWriter>(
         this->rule, checked_deref_cast<const hkpSampledHeightFieldShape>(other));
   }
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -3897,7 +3938,7 @@ struct hkpCompressedSampledHeightFieldShapeMidInterface
   using Base = hkpSampledHeightFieldMidBase<
       hkpCompressedSampledHeightFieldShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpCompressedSampledHeightFieldShapeSaver> saver;
+  std::unique_ptr<hkpCompressedSampledHeightFieldShapeWriter> writer;
   mutable const uint16 *cachedSource = nullptr;
   mutable std::vector<uint16> cachedStorage;
 
@@ -3915,13 +3956,13 @@ struct hkpCompressedSampledHeightFieldShapeMidInterface
   }
   const uint16 *GetStorage() const override {
     const auto values = GetStorageArray();
-    const auto *raw = reinterpret_cast<const uint16 *>(values.view.data);
-    if (!raw || !values.swapEndian) {
-      return raw;
+    const auto *source = reinterpret_cast<const uint16 *>(values.view.data);
+    if (!source || !values.swapEndian) {
+      return source;
     }
-    if (cachedSource != raw || cachedStorage.size() != values.view.count) {
-      cachedSource = raw;
-      cachedStorage.assign(raw, raw + values.view.count);
+    if (cachedSource != source || cachedStorage.size() != values.view.count) {
+      cachedSource = source;
+      cachedStorage.assign(source, source + values.view.count);
       for (auto &value : cachedStorage) {
         value = ByteSwap16(value);
       }
@@ -3945,12 +3986,12 @@ struct hkpCompressedSampledHeightFieldShapeMidInterface
                : 0.0f;
   }
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpCompressedSampledHeightFieldShapeSaver>(
+    writer = std::make_unique<hkpCompressedSampledHeightFieldShapeWriter>(
         this->rule,
         checked_deref_cast<const hkpCompressedSampledHeightFieldShape>(other));
   }
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -3958,10 +3999,13 @@ struct hkpTriSampledHeightFieldCollectionMidInterface
     : hkpMidBase<hkpTriSampledHeightFieldCollectionInternalInterface> {
   using Base = hkpMidBase<hkpTriSampledHeightFieldCollectionInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpTriSampledHeightFieldCollectionSaver> saver;
+  std::unique_ptr<hkpTriSampledHeightFieldCollectionWriter> writer;
 
   uint32 GetShapeType() const override {
-    return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
+    if (HasHkcdShapeBase(this->rule)) {
+      return 6;
+    }
+    return 17;
   }
   bool GetDisableWelding() const override {
     return ReadValue<uint8>(data, 16) != 0;
@@ -3980,12 +4024,12 @@ struct hkpTriSampledHeightFieldCollectionMidInterface
     return ReadValue<float>(data, 28, this->DataNeedsEndianSwap());
   }
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpTriSampledHeightFieldCollectionSaver>(
+    writer = std::make_unique<hkpTriSampledHeightFieldCollectionWriter>(
         this->rule,
         checked_deref_cast<const hkpTriSampledHeightFieldCollection>(other));
   }
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -3993,9 +4037,12 @@ struct hkpTriSampledHeightFieldBvTreeShapeMidInterface
     : hkpMidBase<hkpTriSampledHeightFieldBvTreeShapeInternalInterface> {
   using Base = hkpMidBase<hkpTriSampledHeightFieldBvTreeShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpTriSampledHeightFieldBvTreeShapeSaver> saver;
+  std::unique_ptr<hkpTriSampledHeightFieldBvTreeShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 7;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
   const hkpTriSampledHeightFieldCollection *GetChildShape() const override {
@@ -4011,19 +4058,19 @@ struct hkpTriSampledHeightFieldBvTreeShapeMidInterface
     return ReadValue<uint8>(data, 24) != 0;
   }
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpTriSampledHeightFieldBvTreeShapeSaver>(
+    writer = std::make_unique<hkpTriSampledHeightFieldBvTreeShapeWriter>(
         this->rule,
         checked_deref_cast<const hkpTriSampledHeightFieldBvTreeShape>(other));
   }
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
 struct hkpMoppCodeMidInterface : hkpMidBase<hkpMoppCodeInternalInterface> {
   using Base = hkpMidBase<hkpMoppCodeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpMoppCodeSaver> saver;
+  std::unique_ptr<hkpMoppCodeWriter> writer;
 
   static constexpr uint32 kMaxCodeBytes = 1 << 27;
   mutable Vector4A16 offsetStorage{};
@@ -4055,12 +4102,12 @@ struct hkpMoppCodeMidInterface : hkpMidBase<hkpMoppCodeInternalInterface> {
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpMoppCodeSaver>(
+    writer = std::make_unique<hkpMoppCodeWriter>(
         this->rule, checked_deref_cast<const hkpMoppCode>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4068,9 +4115,12 @@ struct hkpMoppBvTreeShapeMidInterface
     : hkpMidBase<hkpMoppBvTreeShapeInternalInterface> {
   using Base = hkpMidBase<hkpMoppBvTreeShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpMoppBvTreeShapeSaver> saver;
+  std::unique_ptr<hkpMoppBvTreeShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 9;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
 
@@ -4093,12 +4143,12 @@ struct hkpMoppBvTreeShapeMidInterface
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpMoppBvTreeShapeSaver>(
+    writer = std::make_unique<hkpMoppBvTreeShapeWriter>(
         this->rule, checked_deref_cast<const hkpMoppBvTreeShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4106,7 +4156,7 @@ struct hkpStaticCompoundShapeMidInterface
     : hkpMidBase<hkpStaticCompoundShapeInternalInterface> {
   using Base = hkpMidBase<hkpStaticCompoundShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpStaticCompoundShapeSaver> saver;
+  std::unique_ptr<hkpStaticCompoundShapeWriter> writer;
 
   static constexpr uint32 kMaxInstances = 1 << 16;
 
@@ -4156,12 +4206,362 @@ struct hkpStaticCompoundShapeMidInterface
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpStaticCompoundShapeSaver>(
+    writer = std::make_unique<hkpStaticCompoundShapeWriter>(
         this->rule, checked_deref_cast<const hkpStaticCompoundShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
+  }
+};
+
+struct hkpBvCompressedMeshShapeMidInterface
+    : hkpMidBase<hkpBvCompressedMeshShapeInternalInterface> {
+  using Base = hkpMidBase<hkpBvCompressedMeshShapeInternalInterface>;
+  using Base::Base;
+  std::unique_ptr<hkpBvCompressedMeshShapeWriter> writer;
+  mutable const char *cachedBvcData = nullptr;
+  mutable std::vector<Vector4A16> cachedVertices;
+  mutable std::vector<hkpBvCompressedMeshShapeTriangle> cachedTriangles;
+
+  static constexpr uint32 kMaxBvcSections = 1 << 16;
+  static constexpr uint32 kMaxBvcPrimitives = 1 << 23;
+  static constexpr uint32 kMaxBvcVertices = 1 << 24;
+
+  ArrayViewWithMode GetPaletteArray(size_t offset) const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        data, offset, this->rule.x64, this->DataNeedsEndianSwap(), 256);
+    if (!ArrayViewCoveredByHeader(values, sizeof(uint32), this->header)) {
+      return {};
+    }
+    return values;
+  }
+
+  ArrayViewWithMode GetSectionsArray() const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        data, kBvcTreeOffset + 60, this->rule.x64, this->DataNeedsEndianSwap(),
+        kMaxBvcSections);
+    if (!ArrayViewCoveredByHeader(values, kBvcSectionSize, this->header)) {
+      return {};
+    }
+    return values;
+  }
+
+  ArrayViewWithMode GetPrimitivesArray() const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        data, kBvcTreeOffset + 72, this->rule.x64, this->DataNeedsEndianSwap(),
+        kMaxBvcPrimitives);
+    if (!ArrayViewCoveredByHeader(values, kBvcPrimitiveSize, this->header)) {
+      return {};
+    }
+    return values;
+  }
+
+  ArrayViewWithMode GetPackedVerticesArray() const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        data, kBvcTreeOffset + 96, this->rule.x64, this->DataNeedsEndianSwap(),
+        kMaxBvcVertices);
+    if (!ArrayViewCoveredByHeader(values, sizeof(uint32), this->header)) {
+      return {};
+    }
+    return values;
+  }
+
+  ArrayViewWithMode GetSharedVerticesIndexArray() const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        data, kBvcTreeOffset + 84, this->rule.x64,
+        this->DataNeedsEndianSwap(), kMaxBvcVertices);
+    if (!ArrayViewCoveredByHeader(values, sizeof(uint16), this->header)) {
+      return {};
+    }
+    return values;
+  }
+
+  ArrayViewWithMode GetSharedVerticesArray() const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        data, kBvcTreeOffset + 108, this->rule.x64,
+        this->DataNeedsEndianSwap(), kMaxBvcVertices);
+    if (!ArrayViewCoveredByHeader(values, sizeof(uint64), this->header)) {
+      return {};
+    }
+    return values;
+  }
+
+  ArrayViewWithMode GetDataRunsArray() const {
+    ArrayViewWithMode values = ReadArrayWithFallback(
+        data, kBvcTreeOffset + 120, this->rule.x64,
+        this->DataNeedsEndianSwap(), kMaxBvcPrimitives);
+    if (!ArrayViewCoveredByHeader(values, kBvcDataRunSize, this->header)) {
+      return {};
+    }
+    return values;
+  }
+
+  uint32 PaletteValue(const ArrayViewWithMode &palette, uint32 index) const {
+    if (!palette.view.data || index >= palette.view.count) {
+      return index;
+    }
+    return ReadValue<uint32>(palette.view.data, index * sizeof(uint32),
+                             palette.swapEndian);
+  }
+
+  uint32 SectionDataValue(const ArrayViewWithMode &dataRuns,
+                          const char *section,
+                          uint8 sectionSwapEndian, uint32 primitiveIndex) const {
+    if (!dataRuns.view.data) {
+      return 0;
+    }
+
+    uint32 firstRun = 0;
+    uint32 numRuns = 0;
+    const uint32 sectionRuns =
+        ReadValue<uint32>(section, 84, sectionSwapEndian);
+    firstRun = BvcFirst24_8(sectionRuns);
+    numRuns = BvcCount24_8(sectionRuns);
+    const uint32 nextRun = (std::min)(
+        firstRun + numRuns, static_cast<uint32>(dataRuns.view.count));
+
+    for (uint32 i = firstRun; i < nextRun && i < dataRuns.view.count; i++) {
+      const char *run = dataRuns.view.data + i * kBvcDataRunSize;
+      const uint32 value = ReadValue<uint32>(run, 0, dataRuns.swapEndian);
+      const uint8 index = ReadValue<uint8>(run, 4);
+      const uint8 count = ReadValue<uint8>(run, 5);
+      if (primitiveIndex >= index && primitiveIndex < index + count) {
+        return value;
+      }
+    }
+
+    return 0;
+  }
+
+  void BuildBvcCache() const {
+    if (cachedBvcData == data) {
+      return;
+    }
+
+    cachedBvcData = data;
+    cachedVertices.clear();
+    cachedTriangles.clear();
+
+    const ArrayViewWithMode sections = GetSectionsArray();
+    const ArrayViewWithMode primitives = GetPrimitivesArray();
+    const ArrayViewWithMode packedVertices = GetPackedVerticesArray();
+    const ArrayViewWithMode sharedVerticesIndex = GetSharedVerticesIndexArray();
+    const ArrayViewWithMode sharedVertices = GetSharedVerticesArray();
+    const ArrayViewWithMode dataRuns = GetDataRunsArray();
+    const ArrayViewWithMode filterPalette = GetPaletteArray(32);
+    const ArrayViewWithMode userPalette = GetPaletteArray(44);
+    if (!sections.view.data || !primitives.view.data || !packedVertices.view.data) {
+      return;
+    }
+
+    float sharedParms[6]{};
+    const Vector4A16 domainMin =
+        ReadValue<Vector4A16>(data, kBvcTreeOffset + 16,
+                              this->DataNeedsEndianSwap());
+    const Vector4A16 domainMax =
+        ReadValue<Vector4A16>(data, kBvcTreeOffset + 32,
+                              this->DataNeedsEndianSwap());
+    sharedParms[0] = domainMin._arr[0];
+    sharedParms[1] = domainMin._arr[1];
+    sharedParms[2] = domainMin._arr[2];
+    sharedParms[3] =
+        (domainMax._arr[0] - domainMin._arr[0]) /
+        static_cast<float>((uint64{1} << 21) - 1u);
+    sharedParms[4] =
+        (domainMax._arr[1] - domainMin._arr[1]) /
+        static_cast<float>((uint64{1} << 21) - 1u);
+    sharedParms[5] =
+        (domainMax._arr[2] - domainMin._arr[2]) /
+        static_cast<float>((uint64{1} << 22) - 1u);
+
+    constexpr uint32 invalidVertex = (std::numeric_limits<uint32>::max)();
+    std::vector<std::array<uint32, 256>> sectionVertexIndices(sections.view.count);
+    for (size_t sectionIndex = 0; sectionIndex < sections.view.count;
+         sectionIndex++) {
+      sectionVertexIndices[sectionIndex].fill(invalidVertex);
+      const char *section =
+          sections.view.data + sectionIndex * kBvcSectionSize;
+      const uint32 firstPacked =
+          ReadValue<uint32>(section, 72, sections.swapEndian);
+      const uint32 sharedInfo =
+          ReadValue<uint32>(section, 76, sections.swapEndian);
+      const uint32 firstShared = BvcFirst24_8(sharedInfo);
+      const uint8 firstSharedLocal = BvcCount24_8(sharedInfo);
+      const uint8 numPacked = ReadValue<uint8>(section, 88, sections.swapEndian);
+      const uint8 numSharedIndices =
+          ReadValue<uint8>(section, 89, sections.swapEndian);
+      const uint8 page = ReadValue<uint8>(section, 92);
+      float codecParms[6]{};
+      for (size_t i = 0; i < 6; i++) {
+        codecParms[i] =
+            ReadValue<float>(section, 48 + i * sizeof(float), sections.swapEndian);
+      }
+
+      for (uint32 i = 0; i < numPacked; i++) {
+        const uint32 sourceIndex = firstPacked + i;
+        if (sourceIndex >= packedVertices.view.count) {
+          break;
+        }
+        const uint32 packed = ReadValue<uint32>(
+            packedVertices.view.data, sourceIndex * sizeof(uint32),
+            packedVertices.swapEndian);
+        sectionVertexIndices[sectionIndex][i] =
+            static_cast<uint32>(cachedVertices.size());
+        cachedVertices.emplace_back(BvcDecodeVertex32(codecParms, packed));
+      }
+
+      if (!sharedVerticesIndex.view.data || !sharedVertices.view.data) {
+        continue;
+      }
+
+      for (uint32 i = 0; i < numSharedIndices; i++) {
+        const uint32 localIndex = static_cast<uint32>(firstSharedLocal) + i;
+        if (localIndex >= sectionVertexIndices[sectionIndex].size()) {
+          break;
+        }
+        const uint32 indexSource = firstShared + i;
+        if (indexSource >= sharedVerticesIndex.view.count) {
+          break;
+        }
+        const uint16 sharedIndex = ReadValue<uint16>(
+            sharedVerticesIndex.view.data, indexSource * sizeof(uint16),
+            sharedVerticesIndex.swapEndian);
+        const uint32 sharedSource =
+            static_cast<uint32>(page) *
+                static_cast<uint32>(kBvcSharedVerticesPageSize) +
+            sharedIndex;
+        if (sharedSource >= sharedVertices.view.count) {
+          continue;
+        }
+        const uint64 shared = ReadValue<uint64>(
+            sharedVertices.view.data, sharedSource * sizeof(uint64),
+            sharedVertices.swapEndian);
+        sectionVertexIndices[sectionIndex][localIndex] =
+            static_cast<uint32>(cachedVertices.size());
+        cachedVertices.emplace_back(BvcDecodeVertex64(sharedParms, shared));
+      }
+    }
+
+    for (size_t sectionIndex = 0; sectionIndex < sections.view.count;
+         sectionIndex++) {
+      const char *section =
+          sections.view.data + sectionIndex * kBvcSectionSize;
+      const uint32 sectionPrimitives =
+          ReadValue<uint32>(section, 80, sections.swapEndian);
+      const uint32 firstPrimitive = BvcFirst24_8(sectionPrimitives);
+      const uint32 nextPrimitive = (std::min)(
+          firstPrimitive + BvcCount24_8(sectionPrimitives),
+          static_cast<uint32>(primitives.view.count));
+
+      for (uint32 primitiveIndex = firstPrimitive;
+           primitiveIndex < nextPrimitive && primitiveIndex < primitives.view.count;
+           primitiveIndex++) {
+        const char *primitive =
+            primitives.view.data + primitiveIndex * kBvcPrimitiveSize;
+        const uint8 a = ReadValue<uint8>(primitive, 0);
+        const uint8 b = ReadValue<uint8>(primitive, 1);
+        const uint8 c = ReadValue<uint8>(primitive, 2);
+        const uint8 d = ReadValue<uint8>(primitive, 3);
+        const bool triangleOrQuad = (b ^ d) != 0;
+        if (!triangleOrQuad &&
+            (c == 3 || c == 4 ||
+             (a == 0xde && b == 0xad && c == 0xde && d == 0xad))) {
+          continue;
+        }
+
+        const uint32 value = SectionDataValue(dataRuns, section,
+                                              sections.swapEndian,
+                                              primitiveIndex - firstPrimitive);
+        const uint32 filterInfo = PaletteValue(filterPalette, value & 0xffu);
+        const uint32 userData = PaletteValue(userPalette, (value >> 8) & 0xffu);
+        const auto &vertices = sectionVertexIndices[sectionIndex];
+        if (vertices[a] == invalidVertex || vertices[b] == invalidVertex ||
+            vertices[c] == invalidVertex) {
+          continue;
+        }
+
+        hkpBvCompressedMeshShapeTriangle triangle;
+        triangle.a = vertices[a];
+        triangle.b = vertices[b];
+        triangle.c = vertices[c];
+        triangle.filterInfo = filterInfo;
+        triangle.userData = userData;
+        triangle.primitiveIndex =
+            static_cast<uint32>((sectionIndex << 8) |
+                                (primitiveIndex - firstPrimitive));
+        triangle.triangleIndex = 0;
+        cachedTriangles.emplace_back(triangle);
+
+        if (triangleOrQuad && c != d) {
+          if (vertices[d] == invalidVertex) {
+            continue;
+          }
+          triangle.a = vertices[a];
+          triangle.b = vertices[c];
+          triangle.c = vertices[d];
+          triangle.triangleIndex = 1;
+          cachedTriangles.emplace_back(triangle);
+        }
+      }
+    }
+  }
+
+  uint32 GetShapeType() const override {
+    return 17;
+  }
+
+  float GetConvexRadius() const override {
+    return ReadValue<float>(data, 24, this->DataNeedsEndianSwap());
+  }
+
+  uint8 GetWeldingType() const override {
+    return ReadValue<uint8>(data, 28, this->DataNeedsEndianSwap());
+  }
+
+  Vector4A16 GetBvcAabbMin() const override {
+    return ReadValue<Vector4A16>(data, kBvcTreeOffset + 16,
+                                 this->DataNeedsEndianSwap());
+  }
+
+  Vector4A16 GetBvcAabbMax() const override {
+    return ReadValue<Vector4A16>(data, kBvcTreeOffset + 32,
+                                 this->DataNeedsEndianSwap());
+  }
+
+  size_t GetNumBvcVertices() const override {
+    BuildBvcCache();
+    return cachedVertices.size();
+  }
+
+  Vector4A16 GetBvcVertex(size_t id) const override {
+    BuildBvcCache();
+    return id < cachedVertices.size() ? cachedVertices[id] : Vector4A16{};
+  }
+
+  size_t GetNumBvcTriangles() const override {
+    BuildBvcCache();
+    return cachedTriangles.size();
+  }
+
+  hkpBvCompressedMeshShapeTriangle GetBvcTriangle(size_t id) const override {
+    BuildBvcCache();
+    return id < cachedTriangles.size() ? cachedTriangles[id]
+                                       : hkpBvCompressedMeshShapeTriangle{};
+  }
+
+  size_t GetNumBvcPrimitiveKeys() const override {
+    return ReadValue<uint32>(data, kBvcTreeOffset + 48,
+                             this->DataNeedsEndianSwap());
+  }
+
+  void Reflect(const IhkVirtualClass *other) override {
+    writer = std::make_unique<hkpBvCompressedMeshShapeWriter>(
+        this->rule, checked_deref_cast<const hkpBvCompressedMeshShape>(other));
+  }
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4169,7 +4569,7 @@ struct hkpStorageExtendedMeshShapeMidInterface
     : hkpMidBase<hkpStorageExtendedMeshShapeInternalInterface> {
   using Base = hkpMidBase<hkpStorageExtendedMeshShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpStorageExtendedMeshShapeSaver> saver;
+  std::unique_ptr<hkpStorageExtendedMeshShapeWriter> writer;
 
   static constexpr uint32 kMaxSubparts = 1 << 16;
 
@@ -4229,9 +4629,9 @@ struct hkpStorageExtendedMeshShapeMidInterface
       return;
     }
 
-    const auto *rawSubpart = RawCollision(subpart);
-    auto &cached = ShapeSubpartChildren()[rawSubpart
-                                             ? rawSubpart->GetRawCollisionData()
+    const auto *sourceSubpart = SerializedCollision(subpart);
+    auto &cached = ShapeSubpartChildren()[sourceSubpart
+                                             ? sourceSubpart->GetSerializedCollisionData()
                                              : static_cast<const void *>(
                                                    subpart)];
     cached.clear();
@@ -4277,6 +4677,9 @@ struct hkpStorageExtendedMeshShapeMidInterface
   }
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 8;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
 
@@ -4319,12 +4722,12 @@ struct hkpStorageExtendedMeshShapeMidInterface
                 other)) {
       source->CacheShapeSubpartChildren();
     }
-    saver = std::make_unique<hkpStorageExtendedMeshShapeSaver>(
+    writer = std::make_unique<hkpStorageExtendedMeshShapeWriter>(
         this->rule, checked_deref_cast<const hkpStorageExtendedMeshShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4333,7 +4736,7 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
   using Base =
       hkpMidBase<hkpStorageExtendedMeshShapeMeshSubpartStorageInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpStorageExtendedMeshShapeMeshSubpartStorageSaver> saver;
+  std::unique_ptr<hkpStorageExtendedMeshShapeMeshSubpartStorageWriter> writer;
 
   static constexpr uint32 kMaxVertices = 1 << 22;
   static constexpr uint32 kMaxIndices = 1 << 24;
@@ -4394,16 +4797,16 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
 
   const Vector4A16 *GetVertices() const override {
     const ArrayViewWithMode vertices = GetVerticesArray();
-    const auto *rawVertices =
+    const auto *sourceVertices =
         reinterpret_cast<const Vector4A16 *>(vertices.view.data);
-    if (!rawVertices || vertices.view.count == 0 || !vertices.swapEndian) {
-      return rawVertices;
+    if (!sourceVertices || vertices.view.count == 0 || !vertices.swapEndian) {
+      return sourceVertices;
     }
 
-    if (cachedVertexSource != rawVertices ||
+    if (cachedVertexSource != sourceVertices ||
         cachedVertices.size() != vertices.view.count) {
-      cachedVertexSource = rawVertices;
-      cachedVertices.assign(rawVertices, rawVertices + vertices.view.count);
+      cachedVertexSource = sourceVertices;
+      cachedVertices.assign(sourceVertices, sourceVertices + vertices.view.count);
 
       for (auto &value : cachedVertices) {
         value = ByteSwapVector4(value);
@@ -4437,15 +4840,15 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
 
   const uint16 *GetIndices16() const override {
     const ArrayViewWithMode indices = GetIndices16Array();
-    const auto *rawIndices = reinterpret_cast<const uint16 *>(indices.view.data);
-    if (!rawIndices || indices.view.count == 0 || !indices.swapEndian) {
-      return rawIndices;
+    const auto *sourceIndices = reinterpret_cast<const uint16 *>(indices.view.data);
+    if (!sourceIndices || indices.view.count == 0 || !indices.swapEndian) {
+      return sourceIndices;
     }
 
-    if (cachedIndices16Source != rawIndices ||
+    if (cachedIndices16Source != sourceIndices ||
         cachedIndices16.size() != indices.view.count) {
-      cachedIndices16Source = rawIndices;
-      cachedIndices16.assign(rawIndices, rawIndices + indices.view.count);
+      cachedIndices16Source = sourceIndices;
+      cachedIndices16.assign(sourceIndices, sourceIndices + indices.view.count);
 
       for (auto &value : cachedIndices16) {
         value = ByteSwap16(value);
@@ -4461,15 +4864,15 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
 
   const uint32 *GetIndices32() const override {
     const ArrayViewWithMode indices = GetIndices32Array();
-    const auto *rawIndices = reinterpret_cast<const uint32 *>(indices.view.data);
-    if (!rawIndices || indices.view.count == 0 || !indices.swapEndian) {
-      return rawIndices;
+    const auto *sourceIndices = reinterpret_cast<const uint32 *>(indices.view.data);
+    if (!sourceIndices || indices.view.count == 0 || !indices.swapEndian) {
+      return sourceIndices;
     }
 
-    if (cachedIndices32Source != rawIndices ||
+    if (cachedIndices32Source != sourceIndices ||
         cachedIndices32.size() != indices.view.count) {
-      cachedIndices32Source = rawIndices;
-      cachedIndices32.assign(rawIndices, rawIndices + indices.view.count);
+      cachedIndices32Source = sourceIndices;
+      cachedIndices32.assign(sourceIndices, sourceIndices + indices.view.count);
 
       for (auto &value : cachedIndices32) {
         value = ByteSwap32(value);
@@ -4534,14 +4937,14 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpStorageExtendedMeshShapeMeshSubpartStorageSaver>(
+    writer = std::make_unique<hkpStorageExtendedMeshShapeMeshSubpartStorageWriter>(
         this->rule,
         checked_deref_cast<const hkpStorageExtendedMeshShapeMeshSubpartStorage>(
             other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4550,7 +4953,7 @@ struct hkpStorageExtendedMeshShapeShapeSubpartStorageMidInterface
   using Base =
       hkpMidBase<hkpStorageExtendedMeshShapeShapeSubpartStorageInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpStorageExtendedMeshShapeShapeSubpartStorageSaver> saver;
+  std::unique_ptr<hkpStorageExtendedMeshShapeShapeSubpartStorageWriter> writer;
 
   static constexpr uint32 kMaxShapes = 1 << 16;
 
@@ -4606,21 +5009,21 @@ struct hkpStorageExtendedMeshShapeShapeSubpartStorageMidInterface
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpStorageExtendedMeshShapeShapeSubpartStorageSaver>(
+    writer = std::make_unique<hkpStorageExtendedMeshShapeShapeSubpartStorageWriter>(
         this->rule,
         checked_deref_cast<const hkpStorageExtendedMeshShapeShapeSubpartStorage>(
             other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
 struct hkpListShapeMidInterface : hkpMidBase<hkpListShapeInternalInterface> {
   using Base = hkpMidBase<hkpListShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpListShapeSaver> saver;
+  std::unique_ptr<hkpListShapeWriter> writer;
 
   static constexpr uint32 kMaxChildren = 1 << 16;
 
@@ -4635,6 +5038,9 @@ struct hkpListShapeMidInterface : hkpMidBase<hkpListShapeInternalInterface> {
   }
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 11;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
 
@@ -4658,12 +5064,12 @@ struct hkpListShapeMidInterface : hkpMidBase<hkpListShapeInternalInterface> {
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpListShapeSaver>(
+    writer = std::make_unique<hkpListShapeWriter>(
         this->rule, checked_deref_cast<const hkpListShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4671,9 +5077,12 @@ struct hkpConvexTransformShapeMidInterface
     : hkpMidBase<hkpConvexTransformShapeInternalInterface> {
   using Base = hkpMidBase<hkpConvexTransformShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpConvexTransformShapeSaver> saver;
+  std::unique_ptr<hkpConvexTransformShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 10;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
 
@@ -4691,12 +5100,12 @@ struct hkpConvexTransformShapeMidInterface
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpConvexTransformShapeSaver>(
+    writer = std::make_unique<hkpConvexTransformShapeWriter>(
         this->rule, checked_deref_cast<const hkpConvexTransformShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4704,9 +5113,12 @@ struct hkpConvexTranslateShapeMidInterface
     : hkpMidBase<hkpConvexTranslateShapeInternalInterface> {
   using Base = hkpMidBase<hkpConvexTranslateShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpConvexTranslateShapeSaver> saver;
+  std::unique_ptr<hkpConvexTranslateShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 3;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
 
@@ -4724,21 +5136,24 @@ struct hkpConvexTranslateShapeMidInterface
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpConvexTranslateShapeSaver>(
+    writer = std::make_unique<hkpConvexTranslateShapeWriter>(
         this->rule, checked_deref_cast<const hkpConvexTranslateShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
 struct hkpBoxShapeMidInterface : hkpMidBase<hkpBoxShapeInternalInterface> {
   using Base = hkpMidBase<hkpBoxShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpBoxShapeSaver> saver;
+  std::unique_ptr<hkpBoxShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 1;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
   float GetRadius() const override {
@@ -4749,21 +5164,24 @@ struct hkpBoxShapeMidInterface : hkpMidBase<hkpBoxShapeInternalInterface> {
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpBoxShapeSaver>(
+    writer = std::make_unique<hkpBoxShapeWriter>(
         this->rule, checked_deref_cast<const hkpBoxShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
 struct hkpCylinderShapeMidInterface : hkpMidBase<hkpCylinderShapeInternalInterface> {
   using Base = hkpMidBase<hkpCylinderShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpCylinderShapeSaver> saver;
+  std::unique_ptr<hkpCylinderShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (HasHkcdShapeBase(this->rule)) {
+      return 5;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
   float GetRadius() const override {
@@ -4777,12 +5195,12 @@ struct hkpCylinderShapeMidInterface : hkpMidBase<hkpCylinderShapeInternalInterfa
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpCylinderShapeSaver>(
+    writer = std::make_unique<hkpCylinderShapeWriter>(
         this->rule, checked_deref_cast<const hkpCylinderShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4790,7 +5208,7 @@ struct hkpConvexVerticesShapeMidInterface
     : hkpMidBase<hkpConvexVerticesShapeInternalInterface> {
   using Base = hkpMidBase<hkpConvexVerticesShapeInternalInterface>;
   using Base::Base;
-  std::unique_ptr<hkpConvexVerticesShapeSaver> saver;
+  std::unique_ptr<hkpConvexVerticesShapeWriter> writer;
 
   struct FourVectors {
     Vector4A16 x;
@@ -4897,15 +5315,15 @@ struct hkpConvexVerticesShapeMidInterface
 
   const Vector4A16 *GetPlaneEquations() const override {
     const ArrayViewWithMode planes = GetPlaneEquationsArray();
-    const auto *rawPlanes = reinterpret_cast<const Vector4A16 *>(planes.view.data);
-    if (!rawPlanes || planes.view.count == 0 || !planes.swapEndian) {
-      return rawPlanes;
+    const auto *sourcePlanes = reinterpret_cast<const Vector4A16 *>(planes.view.data);
+    if (!sourcePlanes || planes.view.count == 0 || !planes.swapEndian) {
+      return sourcePlanes;
     }
 
-    if (cachedPlaneSource != rawPlanes ||
+    if (cachedPlaneSource != sourcePlanes ||
         cachedPlanes.size() != planes.view.count) {
-      cachedPlaneSource = rawPlanes;
-      cachedPlanes.assign(rawPlanes, rawPlanes + planes.view.count);
+      cachedPlaneSource = sourcePlanes;
+      cachedPlanes.assign(sourcePlanes, sourcePlanes + planes.view.count);
 
       for (auto &value : cachedPlanes) {
         value = ByteSwapVector4(value);
@@ -4916,12 +5334,12 @@ struct hkpConvexVerticesShapeMidInterface
   }
 
   void Reflect(const IhkVirtualClass *other) override {
-    saver = std::make_unique<hkpConvexVerticesShapeSaver>(
+    writer = std::make_unique<hkpConvexVerticesShapeWriter>(
         this->rule, checked_deref_cast<const hkpConvexVerticesShape>(other));
   }
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
-    saver->Save(wr, fixups);
+    writer->Save(wr, fixups);
   }
 };
 
@@ -4975,6 +5393,10 @@ IhkVirtualClass *hkpMoppBvTreeShapeInternalInterface::Create(CRule rule) {
 
 IhkVirtualClass *hkpStaticCompoundShapeInternalInterface::Create(CRule rule) {
   return new hkpStaticCompoundShapeMidInterface{rule};
+}
+
+IhkVirtualClass *hkpBvCompressedMeshShapeInternalInterface::Create(CRule rule) {
+  return new hkpBvCompressedMeshShapeMidInterface{rule};
 }
 
 IhkVirtualClass *hkpStorageExtendedMeshShapeInternalInterface::Create(CRule rule) {

@@ -18,7 +18,6 @@
 #pragma once
 #include "internal/hka_splineanimation.hpp"
 #include "spike/type/flags.hpp"
-#include <vector>
 
 enum SplineTrackType { STT_DYNAMIC, STT_STATIC, STT_IDENTITY };
 

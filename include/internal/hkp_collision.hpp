@@ -135,6 +135,15 @@ struct hkpStaticCompoundShapeInternalInterface
   static IhkVirtualClass *Create(CRule rule);
 };
 
+struct hkpBvCompressedMeshShapeInternalInterface
+    : hkpBvCompressedMeshShape, hkVirtualClass {
+  hkpBvCompressedMeshShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
+  operator hkpBvCompressedMeshShape const *() const override { return this; }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
 struct hkpStorageExtendedMeshShapeInternalInterface
     : hkpStorageExtendedMeshShape, hkVirtualClass {
   hkpStorageExtendedMeshShapeInternalInterface() { AddHash(hkpShape::GetHash()); }

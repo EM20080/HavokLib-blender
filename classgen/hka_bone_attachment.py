@@ -12,7 +12,7 @@ hkaBoneAttachment.patches = [
     ClassPatch('HK700', ClassPatchType.append, Inheritable(hkReferenceObject), ClassPatchType.replace, ClassMember('attachment', Pointer(hkReferenceObject))),
 ]
 
-BASE.permutators = BASE.permutators[0:BASE.permutators.index('HK2015')]
+BASE.permutators = BASE.permutators[0:BASE.permutators.index('HK2015_1')]
 
 if __name__ == "__main__":
     CLASSES = [hkaBoneAttachment,]

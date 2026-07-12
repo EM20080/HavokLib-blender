@@ -57,7 +57,8 @@ struct hkaSkeletonSaver {
       locals.emplace_back(sBegin + out->m(mm::bones), wr.Tell());
       size_t curFixup = locals.size();
       const auto boneType =
-          clgen::GetLayout(clgen::hkaBone::LAYOUTS, out->lookup);
+          clgen::GetLayout(clgen::hkaBone::LAYOUTS,
+                           {out->lookup, {clgen::LookupFlag::Ptr}});
 
       if (out->LayoutVersion() < HK700) {
         size_t curGFixup = fixups.globals.size();

@@ -19,9 +19,9 @@
 #include "internal/hk_internal_api.hpp"
 #include "spike/except.hpp"
 #include "spike/io/binreader.hpp"
-#include "spike/io/binwritter.hpp"
 #include "spike/master_printer.hpp"
 #include "spike/type/pointer.hpp"
+#include <map>
 
 template <class C> void PtrGuard(const C *val) {
   if (!val) {
@@ -70,19 +70,28 @@ template <>
 ReadFunc Read<CompileFourCC("SDKV")> =
     [](BinReaderRef rd, hkChunk *, hkxNewHeader *root) {
       PtrGuard(root);
-      char buff[8];
+      char buff[9]{};
 
-      rd.Read(buff);
+      rd.ReadBuffer(buff, 8);
+      const uint32 sdkVersion = atoi(buff);
       buff[4] = 0;
-
-      uint32 version = atoi(buff);
+      const uint32 version = atoi(buff);
 
       auto convert = [&] {
+        switch (sdkVersion) {
+        case 20150100:
+          return HK2015_1;
+        case 20150200:
+          return HK2015_2;
+        case 20160100:
+          return HK2016_1;
+        case 20160200:
+          return HK2016_2;
+        default:
+          break;
+        }
+
         switch (version) {
-        case 2015:
-          return HK2015;
-        case 2016:
-          return HK2016;
         case 2017:
           return HK2017;
         case 2018:
@@ -102,7 +111,7 @@ ReadFunc Read<CompileFourCC("SDKV")> =
       root->toolset = convert();
 
       if (root->toolset == HKUNKVER) {
-        throw es::InvalidVersionError(version);
+        throw es::InvalidVersionError(sdkVersion);
       }
     };
 
@@ -230,7 +239,6 @@ ReadCompFunc ReadComp<CompileFourCC("ITEM")> =
       PtrGuard(root);
 
       const uint32 numFixups = holder->Size() / sizeof(classEntryFixup);
-
       rd.ReadContainer(root->classEntries, numFixups);
     };
 
@@ -425,7 +433,6 @@ void hkxNewHeader::Load(BinReaderRef rd) {
     hkChunk chunk;
     rd.Read(chunk);
     chunk.Reorder();
-
     if (hkCompChunkRegistry.count(chunk.tag)) {
       hkCompChunkRegistry.at(chunk.tag)(rd, &chunk, &Compendium());
       continue;

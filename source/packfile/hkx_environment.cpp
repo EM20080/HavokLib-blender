@@ -36,7 +36,8 @@ struct hkxEnvironmentSaver {
       locals.emplace_back(sBegin + out->m(mm::variables), wr.Tell());
       size_t curFixup = locals.size();
       const auto varType =
-          clgen::GetLayout(clgen::hkxEnvironmentVariable::LAYOUTS, out->lookup);
+          clgen::GetLayout(clgen::hkxEnvironmentVariable::LAYOUTS,
+                           {out->lookup, {clgen::LookupFlag::Ptr}});
       using vm = clgen::hkxEnvironmentVariable::Members;
 
       for ([[maybe_unused]] auto &v : *in) {

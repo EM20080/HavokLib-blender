@@ -1,8 +1,12 @@
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+set(HAVOK_CLASSGEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
 function(build_classes filename)
     execute_process(COMMAND ${Python3_EXECUTABLE} ${filename}.py WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE VAR)
-    file(WRITE ../source/packfile/${filename}.inl "${VAR}")
+    get_filename_component(output_directory ${HAVOK_CLASSGEN_DIR}/${filename} DIRECTORY)
+    file(MAKE_DIRECTORY ${output_directory})
+    file(WRITE ${HAVOK_CLASSGEN_DIR}/${filename}.inl "${VAR}")
 endfunction()
 
 build_classes(hk_base)
@@ -20,3 +24,5 @@ build_classes(hka_animation_wavelet)
 build_classes(hka_animation_quantized)
 build_classes(custom/hka_animation_lossless_compressed)
 build_classes(hka_animated_reference_frame_default)
+
+set(HAVOK_CLASSGEN_DIR ${HAVOK_CLASSGEN_DIR} PARENT_SCOPE)

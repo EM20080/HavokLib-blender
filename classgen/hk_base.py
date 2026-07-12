@@ -24,8 +24,10 @@ BASE.permutators = [
     'HK2013',
     'HK2013_2',
     'HK2014',
-    'HK2015',
-    'HK2016',
+    'HK2015_1',
+    'HK2015_2',
+    'HK2016_1',
+    'HK2016_2',
     'HK2017',
     'HK2018',
     'HK2019',
@@ -108,7 +110,7 @@ hkReferenceObject.members = [
     ClassMember('referenceCount', TYPES.int16),
 ]
 hkReferenceObject.patches = [
-    ClassPatch('HK2016', ClassPatchType.insert_after, 'vtable',
+    ClassPatch('HK2016_1', ClassPatchType.insert_after, 'vtable',
                ClassMember('unk', Pointer(TYPES.int32))),
 ]
 

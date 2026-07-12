@@ -102,7 +102,8 @@ struct hkRootLevelContainerSaver {
       locals.emplace_back(sBegin, wr.Tell());
       size_t curFixup = locals.size();
       const auto varType =
-          clgen::GetLayout(clgen::hkNamedVariant::LAYOUTS, out->lookup);
+          clgen::GetLayout(clgen::hkNamedVariant::LAYOUTS,
+                           {out->lookup, {clgen::LookupFlag::Ptr}});
       using vm = clgen::hkNamedVariant::Members;
       constexpr size_t kNameFixup = 0;
       constexpr size_t kClassNameFixup = 1;

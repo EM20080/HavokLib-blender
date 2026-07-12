@@ -15,7 +15,7 @@ hkaRagdollInstance.members = [
     ClassMember('skeleton', Pointer(hkaSkeleton)),
 ]
 
-BASE.permutators = BASE.permutators[0:BASE.permutators.index('HK2015')]
+BASE.permutators = BASE.permutators[0:BASE.permutators.index('HK2015_1')]
 
 if __name__ == "__main__":
     CLASSES = [hkaRagdollInstance,]

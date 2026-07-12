@@ -48,7 +48,9 @@ AnnotationTrackData ExtractAnnotationTrack(const hkaAnnotationTrack *track,
   AnnotationTrackData result;
   result.name = std::string(track->GetName());
   result.header.resize(
-      clgen::GetLayout(clgen::hkaAnnotationTrack::LAYOUTS, lookup)->totalSize);
+      clgen::GetLayout(clgen::hkaAnnotationTrack::LAYOUTS,
+                       {lookup, {clgen::LookupFlag::Ptr}})
+          ->totalSize);
 
   clgen::hkaAnnotationTrack::Interface outTrack(result.header.data(), lookup);
   const auto numFrames = static_cast<uint32>(track->Size());
@@ -99,7 +101,8 @@ void WriteAnnotationTrackTrailing(const AnnotationTrackData &track,
       wr.Tell());
 
   const auto annotationType =
-      clgen::GetLayout(clgen::hkaAnnotation::LAYOUTS, lookup);
+      clgen::GetLayout(clgen::hkaAnnotation::LAYOUTS,
+                       {lookup, {clgen::LookupFlag::Ptr}});
   std::vector<size_t> textFixups;
   textFixups.reserve(track.frames.size());
 

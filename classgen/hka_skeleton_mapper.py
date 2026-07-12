@@ -24,7 +24,7 @@ hkaSkeletonMapper.patches = [
                hkArray('simpleMappingPartitionRanges', PartitionMappingRange), hkArray('chainMappingPartitionRanges', PartitionMappingRange))
 ]
 
-BASE.permutators = BASE.permutators[0:BASE.permutators.index('HK2015')]
+BASE.permutators = BASE.permutators[0:BASE.permutators.index('HK2015_1')]
 
 if __name__ == "__main__":
     CLASSES = [hkaSkeletonMapper,]

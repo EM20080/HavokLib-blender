@@ -45,4 +45,5 @@ struct HK_EXTERN IhkPackFile {
 
   // rule must be as hex, ie. 0x4101
   void ToPackFile(const std::string &fileName, hkToolset toolset, uint32 rule);
+  void ToTagFile(const std::string &fileName, hkToolset toolset);
 };

@@ -1,5 +1,21 @@
 file(GLOB_RECURSE CORE_SOURCE_FILES "*.cpp")
 
+set(HAVOK_2016_METADATA_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+set(HAVOK_2016_METADATA ${HAVOK_2016_METADATA_DIR}/havok_2016_metadata.inl)
+add_custom_command(
+  OUTPUT ${HAVOK_2016_METADATA}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${HAVOK_2016_METADATA_DIR}
+  COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/format_new_metadata.py
+          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/format_new_metadata.bin
+          ${HAVOK_2016_METADATA}
+  DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/format_new_metadata.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/format_new_metadata.bin
+  VERBATIM)
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/format_new_write.cpp
+                            PROPERTIES OBJECT_DEPENDS ${HAVOK_2016_METADATA})
+
 add_library(havok-interface INTERFACE)
 target_include_directories(havok-interface INTERFACE ../include)
 target_link_libraries(havok-interface INTERFACE spike-interface)
@@ -16,6 +32,9 @@ if(NOT NO_OBJECTS)
     POSITION_INDEPENDENT_CODE ${OBJECTS_PID}
     INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${HAVOK_2016_METADATA_DIR}
+    ${HAVOK_CLASSGEN_DIR}
+    ${HAVOK_CLASSGEN_DIR}/custom
     LINKS
     spike-objects
     havok-interface
@@ -49,6 +68,9 @@ if(BUILD_SHARED_LIBS)
     ${CORE_SOURCE_FILES}
     INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${HAVOK_2016_METADATA_DIR}
+    ${HAVOK_CLASSGEN_DIR}
+    ${HAVOK_CLASSGEN_DIR}/custom
     LINKS
     spike
     pugixml

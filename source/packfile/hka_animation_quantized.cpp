@@ -17,11 +17,105 @@
 
 #include "hka_animation.hpp"
 #include "hklib/hka_skeleton.hpp"
+#include "internal/hka_quantized_encoder.hpp"
 #include "internal/hka_quantizedanimation.hpp"
+#include "base.hpp"
 
 #include "hka_animation_quantized.inl"
 
 namespace {
+
+struct AnnotationFrameData {
+  float time;
+  std::string text;
+};
+
+struct AnnotationTrackData {
+  std::string name;
+  std::vector<AnnotationFrameData> frames;
+  std::vector<char> header;
+};
+
+AnnotationTrackData ExtractAnnotationTrack(const hkaAnnotationTrack *track,
+                                           clgen::LayoutLookup lookup) {
+  AnnotationTrackData result;
+  result.name = std::string(track->GetName());
+  result.header.resize(
+      clgen::GetLayout(clgen::hkaAnnotationTrack::LAYOUTS,
+                       {lookup, {clgen::LookupFlag::Ptr}})
+          ->totalSize);
+
+  clgen::hkaAnnotationTrack::Interface outTrack(result.header.data(), lookup);
+  const uint32 numFrames = uint32(track->Size());
+  outTrack.NumAnnotations(numFrames);
+
+  result.frames.reserve(numFrames);
+  for (size_t i = 0; i < track->Size(); i++) {
+    auto frame = track->At(i);
+    result.frames.push_back({frame.time, std::string(frame.text)});
+  }
+  return result;
+}
+
+void WriteAnnotationTrackTrailing(const AnnotationTrackData &track,
+                                  BinWritterRef_e wr, hkFixups &fixups,
+                                  clgen::LayoutLookup lookup,
+                                  size_t trackBegin) {
+  auto &locals = fixups.locals;
+  clgen::hkaAnnotationTrack::Interface outTrack(
+      const_cast<char *>(track.header.data()), lookup);
+
+  if (outTrack.m(clgen::hkaAnnotationTrack::Members::name) >= 0) {
+    wr.ApplyPadding();
+    locals.emplace_back(trackBegin +
+                            outTrack.m(clgen::hkaAnnotationTrack::Members::name),
+                        wr.Tell());
+    wr.WriteBuffer(track.name.data(), track.name.size());
+    wr.Skip(1);
+  }
+
+  if (track.frames.empty() ||
+      outTrack.m(clgen::hkaAnnotationTrack::Members::annotations) < 0) {
+    return;
+  }
+
+  wr.ApplyPadding();
+  locals.emplace_back(
+      trackBegin + outTrack.m(clgen::hkaAnnotationTrack::Members::annotations),
+      wr.Tell());
+  const auto annotationType =
+      clgen::GetLayout(clgen::hkaAnnotation::LAYOUTS,
+                       {lookup, {clgen::LookupFlag::Ptr}});
+  std::vector<size_t> textFixups;
+  textFixups.reserve(track.frames.size());
+
+  for (const auto &frame : track.frames) {
+    std::vector<char> frameData(annotationType->totalSize);
+    clgen::hkaAnnotation::Interface outFrame(frameData.data(), lookup);
+    outFrame.Time(frame.time);
+    const size_t frameBegin = wr.Tell();
+    wr.WriteBuffer(frameData.data(), frameData.size());
+    if (!frame.text.empty() &&
+        outFrame.m(clgen::hkaAnnotation::Members::text) >= 0) {
+      textFixups.push_back(locals.size());
+      locals.emplace_back(frameBegin +
+                          outFrame.m(clgen::hkaAnnotation::Members::text));
+    } else {
+      textFixups.push_back(size_t(-1));
+    }
+  }
+
+  for (size_t i = 0; i < track.frames.size(); i++) {
+    if (textFixups[i] == size_t(-1)) {
+      continue;
+    }
+    wr.ApplyPadding();
+    locals[textFixups[i]].destination = wr.Tell();
+    wr.WriteBuffer(track.frames[i].text.data(), track.frames[i].text.size());
+    wr.Skip(1);
+  }
+}
+
 struct QuantizedAnimationHeader {
   uint16 headerSize;
   uint16 numBones;
@@ -254,6 +348,80 @@ inline Vector4A16 Read48Quat(const char *&buffer, bool bigEndian) {
     return retVal;
   }
 }
+
+struct hkaQuantizedAnimationWriter {
+  const hkaQuantizedAnimationInternalInterface *in;
+  const clgen::hkaQuantizedAnimation::Interface *out;
+  const std::vector<char> *encoded;
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const {
+    const size_t objectBegin = wr.Tell();
+    const auto &layout = *out->layout;
+    const auto anim = out->BasehkaAnimation();
+    using am = clgen::hkaAnimation::Members;
+    using qm = clgen::hkaQuantizedAnimation::Members;
+
+    wr.WriteBuffer(out->data, layout.totalSize);
+    if (const auto *motion = in->GetExtractedMotion();
+        motion && anim.m(am::extractedMotion) >= 0) {
+      fixups.locals.emplace_back(objectBegin + anim.m(am::extractedMotion),
+                                 motion);
+    }
+
+    const size_t numAnnotations = in->GetNumAnnotations();
+    if (numAnnotations && anim.m(am::annotations) >= 0) {
+      std::vector<AnnotationTrackData> tracks;
+      tracks.reserve(numAnnotations);
+      for (size_t i = 0; i < numAnnotations; i++) {
+        auto track = in->GetAnnotation(i);
+        tracks.push_back(ExtractAnnotationTrack(track.get(), out->lookup));
+      }
+
+      wr.ApplyPadding();
+      fixups.locals.emplace_back(objectBegin + anim.m(am::annotations),
+                                 wr.Tell());
+      if (anim.LayoutVersion() >= HK700) {
+        std::vector<size_t> trackBegins;
+        trackBegins.reserve(tracks.size());
+        for (const auto &track : tracks) {
+          trackBegins.push_back(wr.Tell());
+          wr.WriteBuffer(track.header.data(), track.header.size());
+        }
+        for (size_t i = 0; i < tracks.size(); i++) {
+          WriteAnnotationTrackTrailing(tracks[i], wr, fixups, out->lookup,
+                                       trackBegins[i]);
+        }
+      } else {
+        const size_t globalBegin = fixups.globals.size();
+        for (size_t i = 0; i < tracks.size(); i++) {
+          fixups.globals.emplace_back(wr.Tell());
+          wr.Skip(layout.ptrSize);
+        }
+
+        auto final = std::find_if(
+            fixups.finals.begin(), fixups.finals.end(),
+            [&](const hkFixup &fixup) { return fixup.destClass == in; });
+        if (!es::IsEnd(fixups.finals, final)) {
+          for (size_t i = 0; i < tracks.size(); i++, ++final) {
+            wr.ApplyPadding(16);
+            const size_t trackBegin = wr.Tell();
+            fixups.globals[globalBegin + i].destination = trackBegin;
+            final->destination = trackBegin;
+            wr.WriteBuffer(tracks[i].header.data(), tracks[i].header.size());
+            WriteAnnotationTrackTrailing(tracks[i], wr, fixups, out->lookup,
+                                         trackBegin);
+          }
+        }
+      }
+    }
+
+    if (!encoded->empty() && out->m(qm::data) >= 0) {
+      wr.ApplyPadding(16);
+      fixups.locals.emplace_back(objectBegin + out->m(qm::data), wr.Tell());
+      wr.WriteBuffer(encoded->data(), encoded->size());
+    }
+  }
+};
 } // namespace
 
 struct hkaQuantizedAnimationMidInterface
@@ -266,6 +434,8 @@ struct hkaQuantizedAnimationMidInterface
   bool bigEndian = false;
   bool valid = false;
   const hkaSkeleton *referenceSkeleton = nullptr;
+  std::vector<char> encoded;
+  std::unique_ptr<hkaQuantizedAnimationWriter> writer;
 
   size_t numDynamicScalars = 0;
   size_t numDynamicRotations = 0;
@@ -304,6 +474,18 @@ struct hkaQuantizedAnimationMidInterface
 
   const char *GetData() const override { return data; }
   size_t GetDataSize() const override { return dataSize; }
+  size_t GetNumFrames() const override { return quantHeader.numFrames; }
+  size_t GetNumBones() const override { return quantHeader.numBones; }
+  const hkaSkeleton *GetReferenceSkeleton() const override {
+    if (referenceSkeleton) {
+      return referenceSkeleton;
+    }
+    if (interface.Skeleton() && this->header) {
+      return safe_deref_cast<const hkaSkeleton>(
+          this->header->GetClass(interface.Skeleton()));
+    }
+    return nullptr;
+  }
   void SetReferenceSkeleton(const hkaSkeleton *skeleton) override {
     referenceSkeleton = skeleton;
     if (interface.Data() && interface.NumData()) {
@@ -699,6 +881,91 @@ struct hkaQuantizedAnimationMidInterface
     output.translation = LerpVec(start.translation, end.translation, delta);
     output.rotation = SlerpQuat(start.rotation, end.rotation, delta);
     output.scale = LerpVec(start.scale, end.scale, delta);
+  }
+
+  void Reflect(const IhkVirtualClass *other) override {
+    const auto *source =
+        dynamic_cast<const hkaQuantizedAnimationInternalInterface *>(other);
+    if (!source) {
+      return;
+    }
+
+    const uint32 frameCount = uint32(source->GetNumFrames());
+    const uint32 trackCount = uint32(source->GetNumOfTransformTracks());
+    const uint32 boneCount = uint32(source->GetNumBones());
+    std::vector<hkQTransform> samples(size_t(frameCount) * trackCount);
+    std::vector<uint16> trackToBone(trackCount);
+
+    for (uint32 track = 0; track < trackCount; track++) {
+      trackToBone[track] = uint16(source->BoneIndex(track));
+    }
+    for (uint32 frame = 0; frame < frameCount; frame++) {
+      const float time = frameCount > 1
+                             ? source->Duration() * float(frame) /
+                                   float(frameCount - 1)
+                             : 0.0f;
+      for (uint32 track = 0; track < trackCount; track++) {
+        source->GetValue(samples[size_t(frame) * trackCount + track], time,
+                         track);
+      }
+    }
+
+    std::vector<hkQTransform> referencePose;
+    if (const auto *skeleton = source->GetReferenceSkeleton()) {
+      referencePose.resize(boneCount);
+      for (uint32 bone = 0; bone < boneCount; bone++) {
+        if (const auto *transform = skeleton->GetBoneTM(bone)) {
+          referencePose[bone] = *transform;
+        }
+      }
+    }
+
+    hkaQuantizedEncoderInput input;
+    input.transforms = samples.data();
+    input.referencePose =
+        referencePose.empty() ? nullptr : referencePose.data();
+    input.transformTrackToBoneIndices = trackToBone.data();
+    input.numFrames = frameCount;
+    input.numTransformTracks = trackCount;
+    input.numFloatTracks = uint32(source->GetNumOfFloatTracks());
+    input.numBones = boneCount;
+    input.numFloats = input.numFloatTracks;
+    input.duration = source->Duration();
+
+    if (!hkaEncodeQuantizedAnimation(input, encoded) && source->GetData() &&
+        source->GetDataSize()) {
+      encoded.assign(source->GetData(),
+                     source->GetData() + source->GetDataSize());
+    }
+
+    interface.data = static_cast<char *>(calloc(1, interface.layout->totalSize));
+    auto anim = interface.BasehkaAnimation();
+    anim.AnimationType(interface.LayoutVersion() >= HK2011_1
+                           ? 4
+                           : HK_QUANTIZED_COMPRESSED_ANIMATION);
+    anim.Duration(source->Duration());
+    anim.NumOfTransformTracks(trackCount);
+    anim.NumOfFloatTracks(uint32(source->GetNumOfFloatTracks()));
+    anim.NumAnnotations(uint32(source->GetNumAnnotations()));
+
+    interface.NumData(uint32(encoded.size()));
+    interface.Endian(0);
+    writer = std::make_unique<hkaQuantizedAnimationWriter>();
+    writer->in = source;
+    writer->out = &interface;
+    writer->encoded = &encoded;
+  }
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    if (writer) {
+      writer->Save(wr, fixups);
+    }
+  }
+
+  ~hkaQuantizedAnimationMidInterface() {
+    if (writer) {
+      free(interface.data);
+    }
   }
 };
 

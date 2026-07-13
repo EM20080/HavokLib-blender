@@ -21,6 +21,9 @@
 struct hkaQuantizedAnimationInternalInterface : virtual hkaAnimationLerpSampler {
   virtual const char *GetData() const = 0;
   virtual size_t GetDataSize() const = 0;
+  virtual size_t GetNumFrames() const = 0;
+  virtual size_t GetNumBones() const = 0;
+  virtual const hkaSkeleton *GetReferenceSkeleton() const = 0;
 
   operator hkaQuantizedAnimationInternalInterface const *() const override {
     return this;

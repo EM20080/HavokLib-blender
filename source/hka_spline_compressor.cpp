@@ -18,10 +18,8 @@
 #include "internal/hka_spline_compressor.hpp"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
-#include <cstring>
-#include <limits>
-#include <utility>
 
 namespace {
 
@@ -76,9 +74,7 @@ void appendU16(std::vector<char> &data, uint16 value) {
 }
 
 void appendF32(std::vector<char> &data, float value) {
-  uint32 raw = 0;
-  static_assert(sizeof(raw) == sizeof(value));
-  std::memcpy(&raw, &value, sizeof(raw));
+  const uint32 raw = std::bit_cast<uint32>(value);
   appendU8(data, static_cast<uint8>(raw & 0xff));
   appendU8(data, static_cast<uint8>((raw >> 8) & 0xff));
   appendU8(data, static_cast<uint8>((raw >> 16) & 0xff));
@@ -132,7 +128,7 @@ void normalizeQuaternion(Scalar4 &q) {
     len += component * component;
   }
 
-  if (len <= std::numeric_limits<double>::epsilon()) {
+  if (len == 0.0) {
     q = {{0.0, 0.0, 0.0, 1.0}};
     return;
   }
@@ -249,8 +245,8 @@ void reduceKeysByStep(const std::vector<T> &input, uint32 step,
 
 template <class T, class ErrorFunc>
 void simplifyLinearRange(const std::vector<T> &input, size_t begin, size_t end,
-                         double tolerance, std::vector<uint8> &keep,
-                         ErrorFunc &&errorFunc) {
+                          double tolerance, std::vector<uint8> &keep,
+                          ErrorFunc &errorFunc) {
   if (end <= begin + 1) {
     return;
   }
@@ -279,8 +275,8 @@ void simplifyLinearRange(const std::vector<T> &input, size_t begin, size_t end,
 
 template <class T, class ErrorFunc>
 void reduceKeysAdaptive(const std::vector<T> &input, double tolerance,
-                        std::vector<T> &output, std::vector<uint8> &times,
-                        ErrorFunc &&errorFunc) {
+                         std::vector<T> &output, std::vector<uint8> &times,
+                         ErrorFunc errorFunc) {
   output.clear();
   times.clear();
 
@@ -301,8 +297,7 @@ void reduceKeysAdaptive(const std::vector<T> &input, double tolerance,
   std::vector<uint8> keep(count);
   keep.front() = 1;
   keep.back() = 1;
-  simplifyLinearRange(input, 0, count - 1, tolerance, keep,
-                      std::forward<ErrorFunc>(errorFunc));
+  simplifyLinearRange(input, 0, count - 1, tolerance, keep, errorFunc);
 
   for (size_t i = 0; i < count; i++) {
     if (!keep[i]) {
@@ -721,9 +716,9 @@ void writeFloatCurve(std::vector<char> &data, const std::vector<double> &keys,
   appendPadding(data, 4);
 }
 
-void setError(std::string *error, std::string message) {
+void setError(std::string *error, const char *message) {
   if (error) {
-    *error = std::move(message);
+    *error = message;
   }
 }
 

@@ -323,10 +323,14 @@ const void *ReadPointerArrayItem(const ArrayView &arr, size_t id, uint8 x64) {
   return reinterpret_cast<const es::PointerX86<char> *>(arr.data)[id];
 }
 
-size_t RigidBodyCollidableOffset() { return 16; }
+size_t RigidBodyCollidableOffset(hkToolset version) {
+  return version == HK330B2 ? 28 : 16;
+}
 
 size_t RigidBodyNameOffset(hkToolset version) {
   switch (version) {
+  case HK330B2:
+    return 16;
   case HK2010_2:
   case HK2012_2:
     return 120;
@@ -337,10 +341,16 @@ size_t RigidBodyNameOffset(hkToolset version) {
 }
 
 size_t RigidBodyPropertiesOffset(hkToolset version, uint8 x64) {
+  if (version == HK330B2) {
+    return 76;
+  }
   return RigidBodyNameOffset(version) + PointerSize(x64);
 }
 
 size_t RigidBodyMaterialOffset(hkToolset version, uint8 x64) {
+  if (version == HK330B2) {
+    return 96;
+  }
   const size_t offset =
       RigidBodyPropertiesOffset(version, x64) + ArrayStorageSize(x64);
   switch (version) {
@@ -355,6 +365,8 @@ size_t RigidBodyMaterialOffset(hkToolset version, uint8 x64) {
 
 size_t RigidBodyMotionOffset(hkToolset version) {
   switch (version) {
+  case HK330B2:
+    return 0;
   case HK2010_2:
   case HK2012_2:
     return 224;
@@ -366,6 +378,8 @@ size_t RigidBodyMotionOffset(hkToolset version) {
 
 size_t RigidBodyFixedSize(hkToolset version) {
   switch (version) {
+  case HK330B2:
+    return 208;
   case HK2010_2:
   case HK2012_2:
     return 544;
@@ -377,8 +391,11 @@ size_t RigidBodyFixedSize(hkToolset version) {
 
 size_t CdBodySize(uint8 x64) { return x64 ? 32u : 16u; }
 
-size_t BroadPhaseHandleOffset(uint8 x64) {
-  return RigidBodyCollidableOffset() + CdBodySize(x64) + 4u;
+size_t BroadPhaseHandleOffset(hkToolset version, uint8 x64) {
+  if (version == HK330B2) {
+    return 48;
+  }
+  return RigidBodyCollidableOffset(version) + CdBodySize(x64) + 4u;
 }
 
 size_t RigidBodyHk550AllowedPenetrationOffset() { return 88; }
@@ -407,7 +424,9 @@ uint8 RuntimeQualityType(hkToolset version, const char *data, size_t offset,
   return ReadValue<uint8>(data, offset);
 }
 
-size_t ConvexRadiusOffset() { return 16; }
+size_t ConvexRadiusOffset(hkToolset version) {
+  return version == HK330B2 ? 12 : 16;
+}
 
 size_t SampledHeightFieldStorageOffset() { return 96; }
 
@@ -431,17 +450,21 @@ size_t TriHeightFieldCollectionHeightFieldOffset(uint8) { return 20; }
 
 size_t TriHeightFieldBvTreeChildOffset(uint8) { return 16; }
 
-size_t ConvexVerticesArrayOffset() { return 64; }
+size_t ConvexVerticesArrayOffset(hkToolset version) {
+  return version == HK330B2 ? 48 : 64;
+}
 
-size_t ConvexVerticesNumVerticesOffset(uint8 x64) {
-  return ConvexVerticesArrayOffset() + ArrayStorageSize(x64);
+size_t ConvexVerticesNumVerticesOffset(hkToolset version, uint8 x64) {
+  return ConvexVerticesArrayOffset(version) + ArrayStorageSize(x64);
 }
 
 size_t ConvexVerticesPlaneEquationsOffset(CRule rule) {
-  size_t offset = AlignOffset(ConvexVerticesNumVerticesOffset(rule.x64) +
+  size_t offset = AlignOffset(ConvexVerticesNumVerticesOffset(rule.version, rule.x64) +
                                   sizeof(int32),
                               PointerSize(rule.x64));
   switch (rule.version) {
+  case HK330B2:
+    return 64;
   case HK2010_2:
     return offset + PointerSize(rule.x64) * 2;
   case HK2012_2:
@@ -454,6 +477,8 @@ size_t ConvexVerticesPlaneEquationsOffset(CRule rule) {
 
 size_t ConvexVerticesShapeFixedSize(hkToolset version) {
   switch (version) {
+  case HK330B2:
+    return 80;
   case HK2010_2:
   case HK2012_2:
     return 112;
@@ -671,8 +696,12 @@ size_t ShapeSubpartFixedSize(hkToolset version) {
 
 constexpr uint32 kLockedArrayCapacityMask = 0xc0000000u;
 constexpr size_t kCollisionPtrSize = 4;
-constexpr size_t kPhysicsDataFixedSize = 32;
-constexpr size_t kPhysicsSystemFixedSize = 80;
+size_t PhysicsDataFixedSize(hkToolset version) {
+  return version == HK330B2 ? 24 : 32;
+}
+size_t PhysicsSystemFixedSize(hkToolset version) {
+  return version == HK330B2 ? 64 : 80;
+}
 constexpr size_t kMoppBvTreeShapeFixedSize = 64;
 constexpr size_t kStaticCompoundShapeFixedSize = 112;
 constexpr size_t kStaticCompoundInstanceSize = 64;
@@ -850,6 +879,10 @@ bool HasHkcdShapeBase(CRule rule) {
 
 void WriteShapeBase(std::vector<char> &buffer, CRule rule,
                     const hkpShape *shape) {
+  if (rule.version == HK330B2) {
+    WriteField<uint32>(buffer, 8, shape ? shape->GetShapeUserData() : 0);
+    return;
+  }
   if (HasHkcdShapeBase(rule)) {
     WriteField<uint32>(buffer, 8, 0x00000400u);
     WriteField<uint32>(buffer, 12, shape ? shape->GetShapeUserData() : 0);
@@ -2288,6 +2321,9 @@ template <class C> struct hkpMidBase : C, hkpSerializedCollisionBytes {
   auto DataNeedsEndianSwap() const { return RequiresEndianSwap(this->header); }
 
   uint32 GetShapeUserData() const {
+    if (this->rule.version == HK330B2) {
+      return ReadValue<uint32>(data, 8, this->DataNeedsEndianSwap());
+    }
     return HasHkcdShapeBase(this->rule)
                ? ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap())
                : 0;
@@ -2318,7 +2354,7 @@ struct hkpPhysicsDataWriter : HkpWriter<hkpPhysicsData> {
   using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
-    auto fixed = Fixed(kPhysicsDataFixedSize);
+    auto fixed = Fixed(PhysicsDataFixedSize(rule.version));
     WriteArrayHeader(fixed, 12, in->GetNumSystems(), rule.version);
 
     const size_t begin = wr.Tell();
@@ -2332,14 +2368,16 @@ struct hkpPhysicsSystemWriter : HkpWriter<hkpPhysicsSystem> {
   using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
-    auto fixed = Fixed(kPhysicsSystemFixedSize);
+    auto fixed = Fixed(PhysicsSystemFixedSize(rule.version));
     WriteArrayHeader(fixed, 8, in->GetNumRigidBodies(), rule.version);
     WriteArrayHeader(fixed, 20, 0, rule.version);
     WriteArrayHeader(fixed, 32, 0, rule.version);
     WriteArrayHeader(fixed, 44, 0, rule.version);
     WriteField<uint32>(fixed, 56, 0);
     WriteField<uint32>(fixed, 60, 0);
-    WriteField<uint8>(fixed, 64, in->GetActive() ? 1 : 0);
+    if (rule.version != HK330B2) {
+      WriteField<uint8>(fixed, 64, in->GetActive() ? 1 : 0);
+    }
 
     const size_t begin = wr.Tell();
     WriteBuffer(wr, fixed);
@@ -2424,7 +2462,104 @@ struct hkpRigidBodyWriter : HkpWriter<hkpRigidBody> {
     }
   }
 
+  // Havok 3.3 stores the motion and deactivator as separate virtual objects.
+  // Havok 5.5 and the newer layouts handled below embed the motion in the
+  // rigid body instead.
+  void SaveHk330(BinWritterRef_e wr, hkFixups &fixups) const {
+    auto fixed = Fixed(208);
+    const auto properties = Properties();
+
+    WriteField<uint32>(fixed, 28, 0);
+    WriteField<uint32>(fixed, 32, in->GetShapeKey());
+    WriteField<int32>(fixed, 44, -28);
+    WriteField<uint8>(fixed, 52, 1);
+    WriteField<uint8>(fixed, 53, 0xec);
+    WriteField<uint16>(fixed, 54, in->GetObjectQualityType());
+    WriteField<uint32>(fixed, 56, in->GetCollisionFilterInfo());
+    WriteField<float>(fixed, 60, 0.1f);
+    WriteArrayHeader(fixed, 64, 0, rule.version);
+    WriteArrayHeader(fixed, 76, properties.size(), rule.version);
+    WriteField<uint8>(fixed, 96, in->GetMaterialResponseType());
+    WriteField<float>(fixed, 100, in->GetMaterialFriction());
+    WriteField<float>(fixed, 104, in->GetMaterialRestitution());
+    WriteArrayHeader(fixed, 112, 0, rule.version);
+    WriteArrayHeader(fixed, 124, 0, rule.version);
+    WriteArrayHeader(fixed, 136, 0, rule.version);
+    WriteField<uint16>(fixed, 148, 0xffff);
+    WriteField<uint16>(fixed, 150, 0xffff);
+    WriteField<uint8>(fixed, 152, 0x30);
+    WriteArrayHeader(fixed, 156, 0, rule.version);
+    WriteArrayHeader(fixed, 168, 0, rule.version);
+    WriteArrayHeader(fixed, 180, 0, rule.version);
+    WriteArrayHeader(fixed, 192, 0, rule.version);
+    WriteField<uint32>(fixed, 204, 0xffffffffu);
+
+    const size_t begin = wr.Tell();
+    WriteBuffer(wr, fixed);
+    if (in->GetShape()) {
+      fixups.locals.emplace_back(begin + 28, in->GetShape());
+    }
+    SaveString(wr, fixups, begin, 16, in->GetName());
+    SaveRigidBodyPropertyArray(wr, fixups, begin, 76, properties.data(),
+                               properties.size());
+
+    wr.ApplyPadding();
+    const size_t motionBegin = wr.Tell();
+    auto motion = Fixed(240);
+    const size_t state = 16;
+    const size_t swept = state + 64;
+    WriteMatrixField(motion, state, in->GetTransform());
+    WriteVectorField(motion, swept, in->GetCenterOfMassWorld());
+    WriteVectorField(motion, swept + 16, in->GetCenterOfMassWorld());
+    WriteVectorField(motion, swept + 32, in->GetRotation());
+    WriteVectorField(motion, swept + 48, in->GetRotation());
+    WriteVectorField(motion, swept + 64, in->GetCenterOfMassLocal());
+    WriteField<float>(motion, state + 160, in->GetMotionObjectRadius());
+    WriteField<float>(motion, state + 164, in->GetMaxLinearVelocity());
+    WriteField<float>(motion, state + 168, in->GetMaxAngularVelocity());
+    WriteField<uint16>(motion, state + 172, in->GetDeactivationClass());
+    WriteField<uint16>(motion, state + 174,
+                       in->GetDeactivationIntegrateCounter());
+    const Vector4A16 inertia = in->GetInertiaAndMassInv();
+    WriteField<float>(motion, 192, inertia._arr[3]);
+    WriteField<float>(motion, 196, inertia._arr[0]);
+    WriteField<float>(motion, 200, in->GetLinearDamping());
+    WriteField<float>(motion, 204, in->GetAngularDamping());
+    WriteVectorField(motion, 208, in->GetLinearVelocity());
+    WriteVectorField(motion, 224, in->GetAngularVelocity());
+    WriteBuffer(wr, motion);
+    fixups.locals.emplace_back(begin + 88, motionBegin);
+    fixups.virtualObjects.push_back({motionBegin, "hkSphereMotion"});
+
+    wr.ApplyPadding();
+    const size_t deactivatorBegin = wr.Tell();
+    auto deactivator = Fixed(112);
+    const Vector4A16 maxValue(FloatFromBits(0x7f7fffffu),
+                              FloatFromBits(0x7f7fffffu),
+                              FloatFromBits(0x7f7fffffu),
+                              FloatFromBits(0x7f7fffffu));
+    const Vector4A16 identity(0.0f, 0.0f, 0.0f, 1.0f);
+    WriteVectorField(deactivator, 16, maxValue);
+    WriteVectorField(deactivator, 32, identity);
+    WriteVectorField(deactivator, 48, maxValue);
+    WriteVectorField(deactivator, 64, identity);
+    WriteField<float>(deactivator, 80, -1.0f);
+    WriteField<float>(deactivator, 84, 0.01f);
+    WriteField<float>(deactivator, 88, 0.005f);
+    WriteField<float>(deactivator, 92, 0.1f);
+    WriteField<float>(deactivator, 96, 0.2f);
+    WriteBuffer(wr, deactivator);
+    fixups.locals.emplace_back(begin + 108, deactivatorBegin);
+    fixups.virtualObjects.push_back(
+        {deactivatorBegin, "hkSpatialRigidBodyDeactivator"});
+  }
+
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
+    if (rule.version == HK330B2) {
+      SaveHk330(wr, fixups);
+      return;
+    }
+
     auto fixed = FixedRigidBody();
     const auto properties = Properties();
 
@@ -2433,7 +2568,7 @@ struct hkpRigidBodyWriter : HkpWriter<hkpRigidBody> {
     WriteField<uint32>(fixed, 20, in->GetShapeKey());
     WriteField<uint32>(fixed, 24, 0);
 
-    const size_t broadPhase = BroadPhaseHandleOffset(false);
+    const size_t broadPhase = BroadPhaseHandleOffset(rule.version, false);
     WriteField<uint8>(fixed, broadPhase + 4, 1);
     WriteField<uint16>(fixed, broadPhase + 6,
                        StoredQualityType(rule.version,
@@ -3320,7 +3455,28 @@ struct hkpListShapeWriter : HkpWriter<hkpListShape> {
   using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
-    auto fixed = Fixed(kListShapeFixedSize);
+    auto fixed = Fixed(rule.version == HK330B2 ? 28 : kListShapeFixedSize);
+    WriteShapeBase(fixed, rule, in);
+
+    if (rule.version == HK330B2) {
+      WriteArrayHeader(fixed, 16, in->GetNumChildren(), rule.version);
+
+      const size_t begin = wr.Tell();
+      WriteBuffer(wr, fixed);
+      if (!in->GetNumChildren()) {
+        return;
+      }
+
+      wr.ApplyPadding();
+      fixups.locals.emplace_back(begin + 16, wr.Tell());
+      for (size_t i = 0; i < in->GetNumChildren(); i++) {
+        fixups.locals.emplace_back(wr.Tell(), in->GetChild(i));
+        wr.Skip(sizeof(uint32));
+        wr.Write<uint32>(0);
+      }
+      return;
+    }
+
     Bounds bounds;
     for (size_t i = 0; i < in->GetNumChildren(); i++) {
       AddShapeAabb(in->GetChild(i), bounds);
@@ -3328,7 +3484,6 @@ struct hkpListShapeWriter : HkpWriter<hkpListShape> {
     Vector4A16 halfExtents = bounds.HalfExtents(0.05f);
     Vector4A16 center = bounds.Center();
 
-    WriteShapeBase(fixed, rule, in);
     WriteField<uint8>(fixed, 20, 0);
     WriteArrayHeader(fixed, 24, in->GetNumChildren(), rule.version);
     WriteVectorField(fixed, 48, halfExtents);
@@ -3363,7 +3518,7 @@ struct hkpConvexTransformShapeWriter : HkpWriter<hkpConvexTransformShape> {
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kConvexTransformShapeFixedSize);
     WriteShapeBase(fixed, rule, in);
-    WriteField<float>(fixed, ConvexRadiusOffset(), 0.0f);
+    WriteField<float>(fixed, ConvexRadiusOffset(rule.version), 0.0f);
     WriteField<uint32>(fixed, 24, 0);
     WriteMatrixField(fixed, 32, in->GetTransform());
 
@@ -3381,14 +3536,15 @@ struct hkpConvexTranslateShapeWriter : HkpWriter<hkpConvexTranslateShape> {
   void Save(BinWritterRef_e wr, hkFixups &fixups) const {
     auto fixed = Fixed(kConvexTranslateShapeFixedSize);
     WriteShapeBase(fixed, rule, in);
-    WriteField<float>(fixed, ConvexRadiusOffset(), 0.0f);
-    WriteField<uint32>(fixed, 24, 0);
+    WriteField<float>(fixed, ConvexRadiusOffset(rule.version), 0.0f);
+    const size_t childOffset = rule.version == HK330B2 ? 16 : 24;
+    WriteField<uint32>(fixed, childOffset, 0);
     WriteVectorField(fixed, 32, in->GetTranslation());
 
     const size_t begin = wr.Tell();
     WriteBuffer(wr, fixed);
     if (in->GetChildShape()) {
-      fixups.locals.emplace_back(begin + 24, in->GetChildShape());
+      fixups.locals.emplace_back(begin + childOffset, in->GetChildShape());
     }
   }
 };
@@ -3397,10 +3553,11 @@ struct hkpBoxShapeWriter : HkpWriter<hkpBoxShape> {
   using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &) const {
-    auto fixed = Fixed(kBoxShapeFixedSize);
+    auto fixed = Fixed(rule.version == HK330B2 ? 32 : kBoxShapeFixedSize);
     WriteShapeBase(fixed, rule, in);
-    WriteField<float>(fixed, ConvexRadiusOffset(), in->GetRadius());
-    WriteVectorField(fixed, 32, in->GetHalfExtents());
+    WriteField<float>(fixed, ConvexRadiusOffset(rule.version), in->GetRadius());
+    WriteVectorField(fixed, rule.version == HK330B2 ? 16 : 32,
+                     in->GetHalfExtents());
     WriteBuffer(wr, fixed);
   }
 };
@@ -3409,6 +3566,43 @@ struct hkpCylinderShapeWriter : HkpWriter<hkpCylinderShape> {
   using HkpWriter::HkpWriter;
 
   void Save(BinWritterRef_e wr, hkFixups &) const {
+    if (rule.version == HK330B2) {
+      auto fixed = Fixed(96);
+      WriteShapeBase(fixed, rule, in);
+      const float radius = in->GetRadius();
+      Vector4A16 vertexA = in->GetVertexA();
+      Vector4A16 vertexB = in->GetVertexB();
+      vertexA._arr[3] = radius;
+      vertexB._arr[3] = radius;
+
+      Vector4A16 axis = vertexB - vertexA;
+      axis._arr[3] = 0.0f;
+      Vector4A16 perpendicular1(1.0f, 0.0f, 0.0f, 0.0f);
+      Vector4A16 perpendicular2(0.0f, 1.0f, 0.0f, 0.0f);
+      if (axis.Length() > 0.0f) {
+        axis.Normalize();
+        Vector4A16 reference;
+        if (axis.X * axis.X <= axis.Y * axis.Y &&
+            axis.X * axis.X <= axis.Z * axis.Z) {
+          reference = Vector4A16(1.0f, 0.0f, 0.0f, 0.0f);
+        } else if (axis.Y * axis.Y <= axis.Z * axis.Z) {
+          reference = Vector4A16(0.0f, 1.0f, 0.0f, 0.0f);
+        } else {
+          reference = Vector4A16(0.0f, 0.0f, 1.0f, 0.0f);
+        }
+        perpendicular1 = axis.Cross(reference).Normalized();
+        perpendicular2 = perpendicular1.Cross(axis);
+      }
+
+      WriteField<float>(fixed, 16, radius);
+      WriteVectorField(fixed, 32, vertexA);
+      WriteVectorField(fixed, 48, vertexB);
+      WriteVectorField(fixed, 64, perpendicular1);
+      WriteVectorField(fixed, 80, perpendicular2);
+      WriteBuffer(wr, fixed);
+      return;
+    }
+
     auto fixed = Fixed(kCylinderShapeFixedSize);
     WriteShapeBase(fixed, rule, in);
     WriteField<float>(fixed, 20, in->GetRadius());
@@ -3466,19 +3660,21 @@ struct hkpConvexVerticesShapeWriter : HkpWriter<hkpConvexVerticesShape> {
     arrayRule.x64 = false;
 
     WriteShapeBase(fixed, rule, in);
-    WriteField<float>(fixed, ConvexRadiusOffset(), in->GetRadius());
-    WriteVectorField(fixed, 32, in->GetAabbHalfExtents());
-    WriteVectorField(fixed, 48, in->GetAabbCenter());
-    WriteArrayHeader(fixed, ConvexVerticesArrayOffset(), packed.size(),
+    WriteField<float>(fixed, ConvexRadiusOffset(rule.version), in->GetRadius());
+    WriteVectorField(fixed, rule.version == HK330B2 ? 16 : 32,
+                     in->GetAabbHalfExtents());
+    WriteVectorField(fixed, rule.version == HK330B2 ? 32 : 48,
+                     in->GetAabbCenter());
+    WriteArrayHeader(fixed, ConvexVerticesArrayOffset(rule.version), packed.size(),
                      rule.version);
-    WriteField<int32>(fixed, ConvexVerticesNumVerticesOffset(false),
+    WriteField<int32>(fixed, ConvexVerticesNumVerticesOffset(rule.version, false),
                       static_cast<int32>(in->GetNumVertices()));
     WriteArrayHeader(fixed, ConvexVerticesPlaneEquationsOffset(arrayRule),
                      in->GetNumPlaneEquations(), rule.version);
 
     const size_t begin = wr.Tell();
     WriteBuffer(wr, fixed);
-    SaveValueArray(wr, fixups, begin, ConvexVerticesArrayOffset(),
+    SaveValueArray(wr, fixups, begin, ConvexVerticesArrayOffset(rule.version),
                    packed.data(), packed.size() * 3, sizeof(Vector4A16));
     SaveValueArray(wr, fixups, begin, ConvexVerticesPlaneEquationsOffset(arrayRule),
                    in->GetPlaneEquations(), in->GetNumPlaneEquations(),
@@ -3557,6 +3753,9 @@ struct hkpPhysicsSystemMidInterface
   }
 
   decltype(0 == 0) GetActive() const override {
+    if (this->rule.version == HK330B2) {
+      return true;
+    }
     return ReadValue<uint8>(data, 64) != 0;
   }
 
@@ -3612,6 +3811,13 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
 
   size_t SweptTransformOffset() const { return MotionStateOffset() + 64; }
 
+  const char *Hk330Motion() const {
+    if (this->rule.version != HK330B2) {
+      return nullptr;
+    }
+    return ReadPointer<char>(data, 88, this->rule.x64);
+  }
+
   float ReadHalfFloat(size_t offset) const {
     return HalfBitsToFloat(ReadValue<uint16>(data, offset, this->DataNeedsEndianSwap()));
   }
@@ -3627,62 +3833,101 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   uint32 GetShapeKey() const override {
-    const size_t offset = RigidBodyCollidableOffset() + PointerSize(this->rule.x64);
+    const size_t offset = RigidBodyCollidableOffset(this->rule.version) +
+                          PointerSize(this->rule.x64);
     return ReadValue<uint32>(data, offset, this->DataNeedsEndianSwap());
   }
 
   uint32 GetCollisionFilterInfo() const override {
-    const size_t offset = BroadPhaseHandleOffset(this->rule.x64) + 8;
+    const size_t offset = BroadPhaseHandleOffset(this->rule.version,
+                                                  this->rule.x64) + 8;
     return ReadValue<uint32>(data, offset, this->DataNeedsEndianSwap());
   }
 
   uint8 GetObjectQualityType() const override {
     return RuntimeQualityType(this->rule.version, data,
-                              BroadPhaseHandleOffset(this->rule.x64) + 6,
+                              BroadPhaseHandleOffset(this->rule.version,
+                                                     this->rule.x64) + 6,
                               this->DataNeedsEndianSwap());
   }
 
   uint8 GetMotionType() const override {
+    if (this->rule.version == HK330B2) {
+      return 5;
+    }
     const size_t motionOffset = RigidBodyMotionOffset(this->rule.version);
     return ReadValue<uint8>(data, motionOffset + 8);
   }
 
   Vector4A16 GetCenterOfMassLocal() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<Vector4A16>(motion, 144,
+                                   this->DataNeedsEndianSwap());
+    }
     return ReadValue<Vector4A16>(data, SweptTransformOffset() + 64,
                                  this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetCenterOfMassWorld() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<Vector4A16>(motion, 80,
+                                   this->DataNeedsEndianSwap());
+    }
     return ReadValue<Vector4A16>(data, SweptTransformOffset(),
                                  this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetRotation() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<Vector4A16>(motion, 112,
+                                   this->DataNeedsEndianSwap());
+    }
     return ReadValue<Vector4A16>(data, SweptTransformOffset() + 32,
                                  this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetInertiaAndMassInv() const override {
+    if (const char *motion = Hk330Motion()) {
+      const float massInv =
+          ReadValue<float>(motion, 192, this->DataNeedsEndianSwap());
+      const float inertiaInv =
+          ReadValue<float>(motion, 196, this->DataNeedsEndianSwap());
+      return Vector4A16(inertiaInv, inertiaInv, inertiaInv, massInv);
+    }
     return ReadValue<Vector4A16>(data, MotionOffset() + 192,
                                  this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetLinearVelocity() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<Vector4A16>(motion, 208,
+                                   this->DataNeedsEndianSwap());
+    }
     return ReadValue<Vector4A16>(data, MotionOffset() + 208,
                                  this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetAngularVelocity() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<Vector4A16>(motion, 224,
+                                   this->DataNeedsEndianSwap());
+    }
     return ReadValue<Vector4A16>(data, MotionOffset() + 224,
                                  this->DataNeedsEndianSwap());
   }
 
   float GetMotionObjectRadius() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<float>(motion, 176, this->DataNeedsEndianSwap());
+    }
     return ReadValue<float>(data, MotionStateOffset() + 160,
                             this->DataNeedsEndianSwap());
   }
 
   float GetLinearDamping() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<float>(motion, 200, this->DataNeedsEndianSwap());
+    }
     if (this->rule.version == HK550) {
       return ReadValue<float>(data, MotionStateOffset() + 164,
                               this->DataNeedsEndianSwap());
@@ -3692,6 +3937,9 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   float GetAngularDamping() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<float>(motion, 204, this->DataNeedsEndianSwap());
+    }
     if (this->rule.version == HK550) {
       return ReadValue<float>(data, MotionStateOffset() + 168,
                               this->DataNeedsEndianSwap());
@@ -3701,19 +3949,32 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   float GetTimeFactor() const override {
+    if (this->rule.version == HK330B2) {
+      return 1.0f;
+    }
     return this->rule.version == HK550 ? 1.0f
                                        : ReadHalfFloat(MotionStateOffset() + 168);
   }
 
   float GetGravityFactor() const override {
+    if (this->rule.version == HK330B2) {
+      return 1.0f;
+    }
     return this->rule.version == HK550 ? 1.0f : ReadHalfFloat(MotionOffset() + 286);
   }
 
   uint8 GetDeactivationIntegrateCounter() const override {
+    if (const char *motion = Hk330Motion()) {
+      return static_cast<uint8>(ReadValue<uint16>(
+          motion, 190, this->DataNeedsEndianSwap()));
+    }
     return ReadValue<uint8>(data, MotionOffset() + 9);
   }
 
   uint16 GetDeactivationNumInactiveFrames(size_t id) const override {
+    if (this->rule.version == HK330B2) {
+      return 0;
+    }
     if (id > 1) {
       return 0;
     }
@@ -3723,24 +3984,39 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   uint8 GetMaxLinearVelocity() const override {
+    if (const char *motion = Hk330Motion()) {
+      return static_cast<uint8>(ReadValue<float>(
+          motion, 180, this->DataNeedsEndianSwap()));
+    }
     return ReadValue<uint8>(data,
                             MotionStateOffset() +
                                 (this->rule.version == HK550 ? 172 : 170));
   }
 
   uint8 GetMaxAngularVelocity() const override {
+    if (const char *motion = Hk330Motion()) {
+      return static_cast<uint8>(ReadValue<float>(
+          motion, 184, this->DataNeedsEndianSwap()));
+    }
     return ReadValue<uint8>(data,
                             MotionStateOffset() +
                                 (this->rule.version == HK550 ? 173 : 171));
   }
 
   uint8 GetDeactivationClass() const override {
+    if (const char *motion = Hk330Motion()) {
+      return static_cast<uint8>(ReadValue<uint16>(
+          motion, 188, this->DataNeedsEndianSwap()));
+    }
     return ReadValue<uint8>(data,
                             MotionStateOffset() +
                                 (this->rule.version == HK550 ? 174 : 172));
   }
 
   uint16 GetSavedQualityTypeIndex() const override {
+    if (this->rule.version == HK330B2) {
+      return 0;
+    }
     return ReadValue<uint16>(data, MotionOffset() + 284, this->DataNeedsEndianSwap());
   }
 
@@ -3781,12 +4057,17 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   es::Matrix44 GetTransform() const override {
+    if (const char *motion = Hk330Motion()) {
+      return ReadValue<es::Matrix44>(motion, 16,
+                                     this->DataNeedsEndianSwap());
+    }
     return ReadValue<es::Matrix44>(data, MotionStateOffset(),
                                    this->DataNeedsEndianSwap());
   }
 
   const hkpShape *GetShape() const override {
-    const void *shapePtr = ReadPointer<char>(data, 16, this->rule.x64);
+    const void *shapePtr = ReadPointer<char>(
+        data, RigidBodyCollidableOffset(this->rule.version), this->rule.x64);
     if (!PointerCoveredByHeader(this->header, shapePtr, 1)) {
       return nullptr;
     }
@@ -3809,6 +4090,9 @@ struct hkpShapeMidInterface : hkpMidBase<hkpShapeInternalInterface> {
   std::unique_ptr<hkpShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (this->rule.version == HK330B2) {
+      return 3;
+    }
     return 17;
   }
 
@@ -5106,9 +5390,14 @@ struct hkpListShapeMidInterface : hkpMidBase<hkpListShapeInternalInterface> {
 
   ArrayViewWithMode GetChildrenArray() const {
     ArrayViewWithMode children = ReadArrayWithFallback(
-        data, 24, this->rule.x64, this->DataNeedsEndianSwap(), kMaxChildren);
-    const size_t entrySize = children.x64 ? 24u : 16u;
-    if (!ArrayViewCoveredByHeader(children, entrySize, this->header)) {
+        data, this->rule.version == HK330B2 ? 16 : 24,
+        this->rule.version == HK330B2 ? false : this->rule.x64,
+        this->DataNeedsEndianSwap(), kMaxChildren);
+    if (!ArrayViewCoveredByHeader(children,
+                                  this->rule.version == HK330B2
+                                      ? 8
+                                      : (children.x64 ? 24 : 16),
+                                  this->header)) {
       return {};
     }
     return children;
@@ -5131,7 +5420,9 @@ struct hkpListShapeMidInterface : hkpMidBase<hkpListShapeInternalInterface> {
       return nullptr;
     }
 
-    const size_t entrySize = children.x64 ? 24 : 16;
+    const size_t entrySize = this->rule.version == HK330B2
+                                 ? 8
+                                 : (children.x64 ? 24 : 16);
     const char *entryData = children.view.data + (id * entrySize);
     const void *shapePtr = ReadPointer<char>(entryData, 0, children.x64);
     if (!PointerCoveredByHeader(this->header, shapePtr, 1)) {
@@ -5193,6 +5484,9 @@ struct hkpConvexTranslateShapeMidInterface
   std::unique_ptr<hkpConvexTranslateShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (this->rule.version == HK330B2) {
+      return 3;
+    }
     if (HasHkcdShapeBase(this->rule)) {
       return 3;
     }
@@ -5200,7 +5494,9 @@ struct hkpConvexTranslateShapeMidInterface
   }
 
   const hkpShape *GetChildShape() const override {
-    const size_t childPointerOffset = 20 + (this->rule.x64 ? 8 : 4);
+    const size_t childPointerOffset = this->rule.version == HK330B2
+                                          ? 16
+                                          : 20 + (this->rule.x64 ? 8 : 4);
     const void *shapePtr = ReadPointer<char>(data, childPointerOffset, this->rule.x64);
     if (!PointerCoveredByHeader(this->header, shapePtr, 1)) {
       return nullptr;
@@ -5228,16 +5524,22 @@ struct hkpBoxShapeMidInterface : hkpMidBase<hkpBoxShapeInternalInterface> {
   std::unique_ptr<hkpBoxShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (this->rule.version == HK330B2) {
+      return 3;
+    }
     if (HasHkcdShapeBase(this->rule)) {
       return 1;
     }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
   float GetRadius() const override {
-    return ReadValue<float>(data, ConvexRadiusOffset(), this->DataNeedsEndianSwap());
+    return ReadValue<float>(data, ConvexRadiusOffset(this->rule.version),
+                            this->DataNeedsEndianSwap());
   }
   Vector4A16 GetHalfExtents() const override {
-    return ReadValue<Vector4A16>(data, 32, this->DataNeedsEndianSwap());
+    return ReadValue<Vector4A16>(data,
+                                 this->rule.version == HK330B2 ? 16 : 32,
+                                 this->DataNeedsEndianSwap());
   }
 
   void Reflect(const IhkVirtualClass *other) override {
@@ -5256,13 +5558,17 @@ struct hkpCylinderShapeMidInterface : hkpMidBase<hkpCylinderShapeInternalInterfa
   std::unique_ptr<hkpCylinderShapeWriter> writer;
 
   uint32 GetShapeType() const override {
+    if (this->rule.version == HK330B2) {
+      return 1;
+    }
     if (HasHkcdShapeBase(this->rule)) {
       return 5;
     }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
   float GetRadius() const override {
-    return ReadValue<float>(data, 20, this->DataNeedsEndianSwap());
+    return ReadValue<float>(data, this->rule.version == HK330B2 ? 16 : 20,
+                            this->DataNeedsEndianSwap());
   }
   Vector4A16 GetVertexA() const override {
     return ReadValue<Vector4A16>(data, 32, this->DataNeedsEndianSwap());
@@ -5300,7 +5606,7 @@ struct hkpConvexVerticesShapeMidInterface
 
   ArrayViewWithMode GetPackedVertices() const {
     ArrayViewWithMode packed = ReadArrayWithFallback(
-        data, ConvexVerticesArrayOffset(), this->rule.x64,
+        data, ConvexVerticesArrayOffset(this->rule.version), this->rule.x64,
         this->DataNeedsEndianSwap(), kMaxPackedVertices);
     if (!ArrayViewCoveredByHeader(packed, sizeof(FourVectors), this->header)) {
       return {};
@@ -5324,19 +5630,27 @@ struct hkpConvexVerticesShapeMidInterface
   }
 
   uint32 GetShapeType() const override {
+    if (this->rule.version == HK330B2) {
+      return 5;
+    }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
 
   float GetRadius() const override {
-    return ReadValue<float>(data, ConvexRadiusOffset(), this->DataNeedsEndianSwap());
+    return ReadValue<float>(data, ConvexRadiusOffset(this->rule.version),
+                            this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetAabbHalfExtents() const override {
-    return ReadValue<Vector4A16>(data, 32, this->DataNeedsEndianSwap());
+    return ReadValue<Vector4A16>(data,
+                                 this->rule.version == HK330B2 ? 16 : 32,
+                                 this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetAabbCenter() const override {
-    return ReadValue<Vector4A16>(data, 48, this->DataNeedsEndianSwap());
+    return ReadValue<Vector4A16>(data,
+                                 this->rule.version == HK330B2 ? 32 : 48,
+                                 this->DataNeedsEndianSwap());
   }
 
   size_t GetNumVertices() const override {
@@ -5346,7 +5660,8 @@ struct hkpConvexVerticesShapeMidInterface
       activeRule.x64 = values.x64;
     }
     const int32 count = ReadValue<int32>(
-        data, ConvexVerticesNumVerticesOffset(activeRule.x64),
+        data, ConvexVerticesNumVerticesOffset(activeRule.version,
+                                              activeRule.x64),
         this->DataNeedsEndianSwap());
     if (count <= 0) {
       return 0;

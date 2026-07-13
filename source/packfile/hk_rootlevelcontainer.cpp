@@ -105,15 +105,14 @@ struct hkRootLevelContainerSaver {
           clgen::GetLayout(clgen::hkNamedVariant::LAYOUTS,
                            {out->lookup, {clgen::LookupFlag::Ptr}});
       using vm = clgen::hkNamedVariant::Members;
-      constexpr size_t kNameFixup = 0;
-      constexpr size_t kClassNameFixup = 1;
-      constexpr size_t kVariantFixup = 2;
 
       auto reserveVariant = [&] {
         const size_t varBegin = wr.Tell();
         wr.Skip(varType->totalSize);
         locals.emplace_back(varBegin + varType->vtable[vm::name]);
-        locals.emplace_back(varBegin + varType->vtable[vm::className]);
+        if (varType->vtable[vm::className] >= 0) {
+          locals.emplace_back(varBegin + varType->vtable[vm::className]);
+        }
         locals.emplace_back(varBegin + varType->vtable[vm::variant]);
       };
 
@@ -130,16 +129,29 @@ struct hkRootLevelContainerSaver {
               wr, static_cast<hkToolset>(out->LayoutVersion()));
         };
 
-        locals[curFixup + kNameFixup].destination = wr.Tell();
+        locals[curFixup++].destination = wr.Tell();
         wr.WriteBuffer(i.name.data(), i.name.size() + 1);
         applyStringPadding();
 
-        locals[curFixup + kClassNameFixup].destination = wr.Tell();
-        wr.WriteBuffer(i.className.data(), i.className.size() + 1);
-        applyStringPadding();
+        std::string_view className = i.className;
+        if (i.pointer) {
+          className = checked_deref_cast<const hkVirtualClass>(i.pointer)
+                          ->GetClassName(static_cast<hkToolset>(
+                              out->LayoutVersion()));
+        }
+        if (varType->vtable[vm::className] >= 0) {
+          locals[curFixup++].destination = wr.Tell();
+          wr.WriteBuffer(className.data(), className.size() + 1);
+          applyStringPadding();
+        }
 
         if (i.pointer) {
-          locals[curFixup + kVariantFixup].destClass = i.pointer;
+          locals[curFixup].destClass = i.pointer;
+          if (out->LayoutVersion() == HK330B2) {
+            fixups.typeClasses.push_back(
+                {locals[curFixup].strOffset + sizeof(uint32),
+                 std::string(className)});
+          }
         } else if (std::string_view(i.className) == "hkxScene") {
           if (const auto *sceneBlob = in->GetPreservedSceneBlob(i.name)) {
             const uint8 hostLittleEndian = LittleEndian() ? 1 : 0;
@@ -149,15 +161,15 @@ struct hkRootLevelContainerSaver {
             hkLegacySceneBlob blob = MakeLegacySceneBlob(
                 *sceneBlob, targetLittleEndian,
                 static_cast<hkToolset>(out->LayoutVersion()));
-            blob.variantPtrOff = locals[curFixup + kVariantFixup].strOffset;
+            blob.variantPtrOff = locals[curFixup].strOffset;
 
             fixups.legacyScene = std::move(blob);
           }
 
-          locals[curFixup + kVariantFixup].destination = static_cast<size_t>(-1);
+          locals[curFixup].destination = static_cast<size_t>(-1);
         }
 
-        curFixup += vm::_count_;
+        curFixup++;
       };
 
       for (auto &i : *in) {
@@ -205,8 +217,14 @@ struct hkRootLevelContainerMidInterface
               header->GetClass(item.VariantHK700())};
     }
 
-    return {item.Name(), item.ClassName(),
-            header->GetClass(item.Variant().Object())};
+    const auto *variant = header->GetClass(item.Variant().Object());
+    if (interface.LayoutVersion() == HK330B2) {
+      auto cls = safe_deref_cast<const hkVirtualClass>(variant);
+      return {item.Name(), cls ? cls->GetClassName(HK330B2)
+                              : std::string_view{},
+              variant};
+    }
+    return {item.Name(), item.ClassName(), variant};
   }
 
   void Process() override {
@@ -221,6 +239,10 @@ struct hkRootLevelContainerMidInterface
 
     auto *dataSection = oldHeader->GetDataSection();
     if (!dataSection || dataSection->buffer.empty()) {
+      return;
+    }
+
+    if (interface.LayoutVersion() == HK330B2) {
       return;
     }
 

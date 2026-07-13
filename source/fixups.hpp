@@ -41,6 +41,16 @@ struct hkRawLocalFixup {
   std::int32_t destination{0};
 };
 
+struct hkEmbeddedVirtualObject {
+  size_t offset{};
+  std::string className;
+};
+
+struct hkTypeClassFixup {
+  size_t offset{};
+  std::string className;
+};
+
 struct hkLegacySceneBlob {
   std::string name;
   std::string className;
@@ -53,5 +63,7 @@ struct hkFixups {
   std::vector<hkFixup> locals;
   std::vector<hkFixup> finals;
   std::vector<hkFixup> globals;
+  std::vector<hkEmbeddedVirtualObject> virtualObjects;
+  std::vector<hkTypeClassFixup> typeClasses;
   std::optional<hkLegacySceneBlob> legacyScene;
 };

@@ -73,6 +73,8 @@ std::string to_string(const hkQTransform &tm) {
 #include "hkx_environment.inl"
 
 const std::map<hkToolset, xmlToolsetProp> xmlToolsetProps = {
+    {HK330B2,
+     xmlToolsetProp{xmlToolsetProp::TopLevelObject, 7, "Havok-3.3.0-b2"}},
     {HK500, xmlToolsetProp{{}, 5, "Havok-5.0.0-r1"}},
     {HK510, xmlToolsetProp{{}, 5, "Havok-5.1.0-r1"}},
     {HK550, xmlToolsetProp{{}, 5, "Havok-5.5.0-r1"}},

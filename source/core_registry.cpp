@@ -37,6 +37,15 @@
   { JenHash(#aliasName), cname##InternalInterface::Create }
 
 static const std::map<JenHash, IhkVirtualClass *(*)(CRule)> hkConstrRegistry{
+    hkCreatorAlias(hkpPhysicsData, hkPhysicsData),
+    hkCreatorAlias(hkpPhysicsSystem, hkPhysicsSystem),
+    hkCreatorAlias(hkpRigidBody, hkRigidBody),
+    hkCreatorAlias(hkpShape, hkShape),
+    hkCreatorAlias(hkpListShape, hkListShape),
+    hkCreatorAlias(hkpConvexTranslateShape, hkConvexTranslateShape),
+    hkCreatorAlias(hkpBoxShape, hkBoxShape),
+    hkCreatorAlias(hkpCylinderShape, hkCylinderShape),
+    hkCreatorAlias(hkpConvexVerticesShape, hkConvexVerticesShape),
     hkCreatorAlias(hkaInterleavedAnimation, hkaInterleavedSkeletalAnimation),
     hkCreatorAlias(hkaInterleavedAnimation,
                    hkaInterleavedUncompressedAnimation),

@@ -100,6 +100,9 @@ void hkxHeader::GenerateToolset() {
 
   auto convert = [&]() {
     switch (versions[0]) {
+    case 3:
+      return versions[1] == 3 ? HK330B2 : HKUNKVER;
+
     case 5: {
       switch (versions[1]) {
       case 0:
@@ -348,4 +351,3 @@ void hkxSectionHeaderData::SwapEndian() {
   FByteswapper(importsOffset);
   FByteswapper(bufferSize);
 }
-

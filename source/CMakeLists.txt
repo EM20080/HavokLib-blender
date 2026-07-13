@@ -16,6 +16,21 @@ add_custom_command(
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/format_new_write.cpp
                             PROPERTIES OBJECT_DEPENDS ${HAVOK_2016_METADATA})
 
+set(HAVOK_300_METADATA ${HAVOK_2016_METADATA_DIR}/havok_300_metadata.inl)
+add_custom_command(
+  OUTPUT ${HAVOK_300_METADATA}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${HAVOK_2016_METADATA_DIR}
+  COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/havok300metadata.py
+          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/havok300metadata.bin
+          ${HAVOK_300_METADATA}
+  DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/havok300metadata.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/havok300metadata.bin
+  VERBATIM)
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/format_old_write.cpp
+                            PROPERTIES OBJECT_DEPENDS ${HAVOK_300_METADATA})
+
 add_library(havok-interface INTERFACE)
 target_include_directories(havok-interface INTERFACE ../include)
 target_link_libraries(havok-interface INTERFACE spike-interface)

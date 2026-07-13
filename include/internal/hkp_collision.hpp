@@ -20,26 +20,42 @@
 #include "hklib/hkp_collision.hpp"
 
 struct hkpPhysicsDataInternalInterface : hkpPhysicsData, hkVirtualClass {
+  hkpPhysicsDataInternalInterface() { AddHash(hkpPhysicsData::GetHash()); }
   operator hkpPhysicsData const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkPhysicsData" : "hkpPhysicsData";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };
 
 struct hkpPhysicsSystemInternalInterface : hkpPhysicsSystem, hkVirtualClass {
+  hkpPhysicsSystemInternalInterface() { AddHash(hkpPhysicsSystem::GetHash()); }
   operator hkpPhysicsSystem const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkPhysicsSystem" : "hkpPhysicsSystem";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };
 
 struct hkpRigidBodyInternalInterface : hkpRigidBody, hkVirtualClass {
+  hkpRigidBodyInternalInterface() { AddHash(hkpRigidBody::GetHash()); }
   operator hkpRigidBody const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkRigidBody" : "hkpRigidBody";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };
 
 struct hkpShapeInternalInterface : hkpShape, hkVirtualClass {
+  hkpShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
   operator hkpShape const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkShape" : "hkpShape";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };
 
@@ -181,10 +197,16 @@ struct hkpStorageExtendedMeshShapeShapeSubpartStorageInternalInterface
 };
 
 struct hkpListShapeInternalInterface : hkpListShape, hkVirtualClass {
-  hkpListShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
+  hkpListShapeInternalInterface() {
+    AddHash(hkpListShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
   operator hkpListShape const *() const override { return this; }
   operator hkpShape const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkListShape" : "hkpListShape";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };
 
@@ -199,34 +221,60 @@ struct hkpConvexTransformShapeInternalInterface
 
 struct hkpConvexTranslateShapeInternalInterface
     : hkpConvexTranslateShape, hkVirtualClass {
-  hkpConvexTranslateShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
+  hkpConvexTranslateShapeInternalInterface() {
+    AddHash(hkpConvexTranslateShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
   operator hkpConvexTranslateShape const *() const override { return this; }
   operator hkpShape const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkConvexTranslateShape"
+                              : "hkpConvexTranslateShape";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };
 
 struct hkpBoxShapeInternalInterface : hkpBoxShape, hkVirtualClass {
-  hkpBoxShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
+  hkpBoxShapeInternalInterface() {
+    AddHash(hkpBoxShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
   operator hkpBoxShape const *() const override { return this; }
   operator hkpShape const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkBoxShape" : "hkpBoxShape";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };
 
 struct hkpCylinderShapeInternalInterface : hkpCylinderShape, hkVirtualClass {
-  hkpCylinderShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
+  hkpCylinderShapeInternalInterface() {
+    AddHash(hkpCylinderShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
   operator hkpCylinderShape const *() const override { return this; }
   operator hkpShape const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkCylinderShape" : "hkpCylinderShape";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };
 
 struct hkpConvexVerticesShapeInternalInterface
     : hkpConvexVerticesShape, hkVirtualClass {
-  hkpConvexVerticesShapeInternalInterface() { AddHash(hkpShape::GetHash()); }
+  hkpConvexVerticesShapeInternalInterface() {
+    AddHash(hkpConvexVerticesShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
   operator hkpConvexVerticesShape const *() const override { return this; }
   operator hkpShape const *() const override { return this; }
   operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset toolset) const override {
+    return toolset == HK330B2 ? "hkConvexVerticesShape"
+                              : "hkpConvexVerticesShape";
+  }
   static IhkVirtualClass *Create(CRule rule);
 };

@@ -24,20 +24,114 @@
 #include "internal/hk_internal_api.hpp"
 #include "spike/crypto/jenkinshash.hpp"
 #include "spike/io/binwritter.hpp"
+#include "havok_300_metadata.inl"
+
+uint32 Havok300MetadataValue(const unsigned char *data, size_t offset = 0) {
+  return uint32(data[offset]) | (uint32(data[offset + 1]) << 8) |
+         (uint32(data[offset + 2]) << 16) |
+         (uint32(data[offset + 3]) << 24);
+}
+
+struct Havok300MetadataView {
+  const unsigned char *metadata;
+  uint32 classSize;
+  uint32 typeSize;
+  uint32 localCount;
+  uint32 globalCount;
+  uint32 virtualCount;
+  uint32 rootClassNameOffset;
+  const unsigned char *classData;
+  const unsigned char *typeData;
+
+  explicit Havok300MetadataView(uint32 profile,
+                                bool littleEndian = false) {
+    metadata = havok300Metadata + 8 * sizeof(uint32);
+    for (uint32 index = 0; index < profile; index++) {
+      metadata += Havok300MetadataValue(havok300Metadata,
+                                        index * sizeof(uint32));
+    }
+    classSize = Havok300MetadataValue(metadata);
+    typeSize = Havok300MetadataValue(metadata, 4);
+    localCount = Havok300MetadataValue(metadata, 8);
+    globalCount = Havok300MetadataValue(metadata, 12);
+    virtualCount = Havok300MetadataValue(metadata, 16);
+    rootClassNameOffset = Havok300MetadataValue(metadata, 20);
+    const unsigned char *bigEndianClassData = metadata + 24;
+    if (littleEndian) {
+      classData = bigEndianClassData + classSize + typeSize;
+    } else {
+      classData = bigEndianClassData;
+    }
+    typeData = classData + classSize;
+  }
+
+  const unsigned char *TypeData() const { return typeData; }
+  const unsigned char *LocalFixups() const {
+    return metadata + 24 + (classSize + typeSize) * 2;
+  }
+  const unsigned char *GlobalFixups() const {
+    return LocalFixups() + localCount * 8;
+  }
+  const unsigned char *VirtualFixups() const {
+    return GlobalFixups() + globalCount * 12;
+  }
+};
+
+uint32 MetadataFixupValue(const unsigned char *data, size_t offset) {
+  return uint32(data[offset]) | (uint32(data[offset + 1]) << 8) |
+         (uint32(data[offset + 2]) << 16) |
+         (uint32(data[offset + 3]) << 24);
+}
+
+size_t Havok300TypeClassOffset(std::string_view className,
+                               uint32 profile) {
+  const Havok300MetadataView metadata(profile);
+  for (size_t v = 0; v < metadata.virtualCount; v++) {
+    const unsigned char *virtualFixup = metadata.VirtualFixups() + v * 12;
+    const uint32 objectOffset = MetadataFixupValue(virtualFixup, 0);
+    for (size_t l = 0; l < metadata.localCount; l++) {
+      const unsigned char *localFixup = metadata.LocalFixups() + l * 8;
+      if (MetadataFixupValue(localFixup, 0) != objectOffset) {
+        continue;
+      }
+      const uint32 nameOffset = MetadataFixupValue(localFixup, 4);
+      const char *name = reinterpret_cast<const char *>(metadata.TypeData() +
+                                                        nameOffset);
+      if (className == name) {
+        return objectOffset;
+      }
+    }
+  }
+  return ~size_t{};
+}
 
 void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   std::unordered_map<std::string, size_t> cnOffsetMap;
   const int32 dataSectionId = 2;
-  constexpr size_t npos = -1;
+  constexpr size_t npos = ~size_t{};
 
+  // The STH2006 files use big-endian 0x4001, but 3.3 AssetCc accepts the
+  // little-endian 0x4101 layout. Preserve the caller's requested endianness;
+  // unlike Havok 5.5 collision, 3.3 is not tied to one of those two rules.
   wr.SwapEndian((layout.littleEndian != 0) != LittleEndian());
 
   bool hasCollisionClasses = false;
+  uint32 havok300MetadataProfile = 0;
   for (auto &c : classes) {
-    auto dc = checked_deref_cast<const hkVirtualClass>(c.get());
-    if (dc->GetClassName(toolset).starts_with("hkp")) {
+    if (safe_deref_cast<const hkpPhysicsData>(c.get()) ||
+        safe_deref_cast<const hkpPhysicsSystem>(c.get()) ||
+        safe_deref_cast<const hkpRigidBody>(c.get()) ||
+        safe_deref_cast<const hkpShape>(c.get())) {
       hasCollisionClasses = true;
-      break;
+    }
+    if (safe_deref_cast<const hkpConvexVerticesShape>(c.get())) {
+      havok300MetadataProfile |= 1;
+    }
+    if (safe_deref_cast<const hkpCylinderShape>(c.get())) {
+      havok300MetadataProfile |= 2;
+    }
+    if (safe_deref_cast<const hkpListShape>(c.get())) {
+      havok300MetadataProfile |= 4;
     }
   }
 
@@ -45,7 +139,10 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   hdr.numSections = 3;
   hdr.contentsSectionIndex = dataSectionId;
   if (hasCollisionClasses) {
-    if (toolset == HK550) {
+    if (toolset == HK330B2) {
+      hdr.contentsClassNameSectionOffset =
+          Havok300MetadataView(havok300MetadataProfile).rootClassNameOffset;
+    } else if (toolset == HK550) {
       hdr.contentsClassNameSectionOffset = 902;
     } else if (toolset == HK2010_2 || toolset == HK2012_2) {
       hdr.contentsClassNameSectionOffset = 75;
@@ -97,7 +194,31 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   std::unordered_map<const IhkVirtualClass *, IhkVirtualClass *> clsRemap;
 
   auto getClassSignature = [&](std::string_view name) {
-    if (toolset == HK550) {
+    if (toolset == HK330B2) {
+      static const std::pair<std::string_view, uint32> signatures[] = {
+          {"hkClass", 0x14425E51},
+          {"hkClassMember", 0x4A986551},
+          {"hkClassEnum", 0x8A3609CF},
+          {"hkClassEnumItem", 0xCE6F8A6C},
+          {"hkRootLevelContainer", 0x12A4E063},
+          {"hkPhysicsData", 0xC2A461E4},
+          {"hkPhysicsSystem", 0xE15F41A4},
+          {"hkRigidBody", 0x33B07A1E},
+          {"hkSpatialRigidBodyDeactivator", 0x7AA84797},
+          {"hkSphereMotion", 0xE6F30C22},
+          {"hkBoxShape", 0x9D45AD25},
+          {"hkConvexTranslateShape", 0xD5CCC442},
+          {"hkConvexVerticesShape", 0x03363466},
+          {"hkCylinderShape", 0x6C787842},
+          {"hkListShape", 0x39C84054},
+      };
+
+      for (auto &sig : signatures) {
+        if (sig.first == name) {
+          return sig.second;
+        }
+      }
+    } else if (toolset == HK550) {
       static const std::pair<std::string_view, uint32> signatures[] = {
           {"hkClass", 0x38771F8E},
           {"hkClassMember", 0xA5240F57},
@@ -276,10 +397,28 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     wr.Skip(1);
   };
 
-  static const std::string_view reqClassNames[] = {
-      "hkClass", "hkClassMember", "hkClassEnum", "hkClassEnumItem"};
-  for (auto &c : reqClassNames) {
-    writeClassName(c);
+  if (toolset == HK330B2) {
+    const Havok300MetadataView metadata(havok300MetadataProfile,
+                                        layout.littleEndian != 0);
+    wr.WriteBuffer(reinterpret_cast<const char *>(metadata.classData),
+                   metadata.classSize);
+    size_t offset = 0;
+    while (offset + 5 <= metadata.classSize) {
+      if (metadata.classData[offset] == 0xff ||
+          metadata.classData[offset + 4] != '\t') {
+        break;
+      }
+      const char *name = reinterpret_cast<const char *>(metadata.classData +
+                                                        offset + 5);
+      cnOffsetMap[name] = offset + 5;
+      offset += 5 + std::string_view(name).size() + 1;
+    }
+  } else {
+    static const std::string_view reqClassNames[] = {
+        "hkClass", "hkClassMember", "hkClassEnum", "hkClassEnumItem"};
+    for (auto &c : reqClassNames) {
+      writeClassName(c);
+    }
   }
 
   auto writeOldClassNames = [&](const auto &classNames) {
@@ -691,12 +830,53 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   wr.ApplyPadding();
 
   typeSection.absoluteDataStart = uint32(wr.Tell());
-  typeSection.bufferSize = 0;
-  typeSection.exportsOffset = 0;
-  typeSection.globalFixupsOffset = 0;
-  typeSection.importsOffset = 0;
-  typeSection.localFixupsOffset = 0;
-  typeSection.virtualFixupsOffset = 0;
+  if (toolset == HK330B2) {
+    const Havok300MetadataView metadata(havok300MetadataProfile,
+                                        layout.littleEndian != 0);
+    wr.SetRelativeOrigin(wr.Tell(), false);
+    wr.WriteBuffer(reinterpret_cast<const char *>(metadata.TypeData()),
+                   metadata.typeSize);
+    typeSection.localFixupsOffset = int32(wr.Tell());
+    for (size_t i = 0; i < metadata.localCount; i++) {
+      const unsigned char *fixup = metadata.LocalFixups() + i * 8;
+      wr.Write<int32>(MetadataFixupValue(fixup, 0));
+      wr.Write<int32>(MetadataFixupValue(fixup, 4));
+    }
+    while (GetPadding(wr.Tell(), 16)) {
+      wr.Write<int32>(-1);
+    }
+    typeSection.globalFixupsOffset = int32(wr.Tell());
+    for (size_t i = 0; i < metadata.globalCount; i++) {
+      const unsigned char *fixup = metadata.GlobalFixups() + i * 12;
+      wr.Write<int32>(MetadataFixupValue(fixup, 0));
+      wr.Write<int32>(MetadataFixupValue(fixup, 4));
+      wr.Write<int32>(MetadataFixupValue(fixup, 8));
+    }
+    while (GetPadding(wr.Tell(), 16)) {
+      wr.Write<int32>(-1);
+    }
+    typeSection.virtualFixupsOffset = int32(wr.Tell());
+    for (size_t i = 0; i < metadata.virtualCount; i++) {
+      const unsigned char *fixup = metadata.VirtualFixups() + i * 12;
+      wr.Write<int32>(MetadataFixupValue(fixup, 0));
+      wr.Write<int32>(MetadataFixupValue(fixup, 4));
+      wr.Write<int32>(MetadataFixupValue(fixup, 8));
+    }
+    while (GetPadding(wr.Tell(), 16)) {
+      wr.Write<int32>(-1);
+    }
+    typeSection.exportsOffset = int32(wr.Tell());
+    typeSection.importsOffset = typeSection.exportsOffset;
+    typeSection.bufferSize = typeSection.exportsOffset;
+    wr.ResetRelativeOrigin(false);
+  } else {
+    typeSection.bufferSize = 0;
+    typeSection.exportsOffset = 0;
+    typeSection.globalFixupsOffset = 0;
+    typeSection.importsOffset = 0;
+    typeSection.localFixupsOffset = 0;
+    typeSection.virtualFixupsOffset = 0;
+  }
   wr.ApplyPadding();
 
   mainSection.absoluteDataStart = uint32(wr.Tell());
@@ -839,9 +1019,25 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     }
   }
 
+  for (auto &object : fixups.virtualObjects) {
+    auto name = cnOffsetMap.find(object.className);
+    if (name != cnOffsetMap.end()) {
+      mainSection.virtualFixups.emplace_back(object.offset, 0, name->second);
+    }
+  }
+
   for (auto &l : fixups.globals) {
     mainSection.globalFixups.emplace_back(l.strOffset, dataSectionId,
                                           l.destination);
+  }
+
+  for (auto &typeClass : fixups.typeClasses) {
+    const size_t destination =
+        Havok300TypeClassOffset(typeClass.className,
+                                havok300MetadataProfile);
+    if (destination != npos) {
+      mainSection.globalFixups.emplace_back(typeClass.offset, 1, destination);
+    }
   }
 
   if (fixups.legacyScene && legacySceneOffset != npos) {

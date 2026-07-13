@@ -3,10 +3,11 @@ from hk_base import *
 hkNamedVariant = ClassData('hkNamedVariant')
 hkNamedVariant.members = [
     ClassMember('name', Pointer(TYPES.char)),
-    ClassMember('className', Pointer(TYPES.char)),
     ClassMember('variant', hkVariant),
 ]
 hkNamedVariant.patches = [
+    ClassPatch('HK500', ClassPatchType.insert_after, 'name',
+               ClassMember('className', Pointer(TYPES.char))),
     ClassPatch('HK700', ClassPatchType.replace, ClassMember('variant', Pointer(TYPES.char))),
 ]
 

@@ -5,6 +5,7 @@ from classgen import *
 
 BASE = MainSettings()
 BASE.permutators = [
+    'HK330B2',
     'HK500',
     'HK510',
     'HK550',

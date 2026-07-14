@@ -31,6 +31,8 @@ void ApplyVariantStringPadding(BinWritterRef_e wr, hkToolset version) {
   case HK2010_2:
   case HK2012_1:
   case HK2012_2:
+  case HK2014:
+  case HK2014_2:
     wr.ApplyPadding();
     break;
   default:

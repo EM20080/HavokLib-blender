@@ -333,6 +333,8 @@ size_t RigidBodyNameOffset(hkToolset version) {
     return 16;
   case HK2010_2:
   case HK2012_2:
+  case HK2014:
+  case HK2014_2:
     return 120;
   case HK550:
   default:
@@ -357,6 +359,9 @@ size_t RigidBodyMaterialOffset(hkToolset version, uint8 x64) {
   case HK2010_2:
   case HK2012_2:
     return offset + 4;
+  case HK2014:
+  case HK2014_2:
+    return offset;
   case HK550:
   default:
     return offset;
@@ -369,6 +374,8 @@ size_t RigidBodyMotionOffset(hkToolset version) {
     return 0;
   case HK2010_2:
   case HK2012_2:
+  case HK2014:
+  case HK2014_2:
     return 224;
   case HK550:
   default:
@@ -382,6 +389,8 @@ size_t RigidBodyFixedSize(hkToolset version) {
     return 208;
   case HK2010_2:
   case HK2012_2:
+  case HK2014:
+  case HK2014_2:
     return 544;
   case HK550:
   default:
@@ -468,6 +477,8 @@ size_t ConvexVerticesPlaneEquationsOffset(CRule rule) {
   case HK2010_2:
     return offset + PointerSize(rule.x64) * 2;
   case HK2012_2:
+  case HK2014:
+  case HK2014_2:
     return AlignOffset(offset + 1, PointerSize(rule.x64));
   case HK550:
   default:
@@ -481,6 +492,8 @@ size_t ConvexVerticesShapeFixedSize(hkToolset version) {
     return 80;
   case HK2010_2:
   case HK2012_2:
+  case HK2014:
+  case HK2014_2:
     return 112;
   case HK550:
   default:
@@ -727,6 +740,8 @@ uint32 LockedArrayCapacity(hkToolset version, size_t count) {
   switch (version) {
   case HK2010_2:
   case HK2012_2:
+  case HK2014:
+  case HK2014_2:
     capacityMask = 0x80000000u;
     break;
   case HK550:
@@ -874,7 +889,8 @@ void WriteSimpleArrayHeader(std::vector<char> &buffer, size_t offset,
 }
 
 bool HasHkcdShapeBase(CRule rule) {
-  return rule.version == HK2012_1 || rule.version == HK2012_2;
+  return rule.version == HK2012_1 || rule.version == HK2012_2 ||
+         rule.version == HK2014 || rule.version == HK2014_2;
 }
 
 void WriteShapeBase(std::vector<char> &buffer, CRule rule,
@@ -2318,7 +2334,9 @@ template <class C> struct hkpMidBase : C, hkpSerializedCollisionBytes {
   CRule GetSerializedCollisionRule() const override { return this->rule; }
   void SwapEndian() override {}
 
-  auto DataNeedsEndianSwap() const { return RequiresEndianSwap(this->header); }
+  auto DataNeedsEndianSwap() const {
+    return this->rule.version != HK2014_2 && RequiresEndianSwap(this->header);
+  }
 
   uint32 GetShapeUserData() const {
     if (this->rule.version == HK330B2) {
@@ -2570,15 +2588,17 @@ struct hkpRigidBodyWriter : HkpWriter<hkpRigidBody> {
 
     const size_t broadPhase = BroadPhaseHandleOffset(rule.version, false);
     WriteField<uint8>(fixed, broadPhase + 4, 1);
-    WriteField<uint16>(fixed, broadPhase + 6,
-                       StoredQualityType(rule.version,
-                                         in->GetObjectQualityType()));
     if (rule.version == HK550) {
+      WriteField<uint16>(fixed, broadPhase + 6,
+                         StoredQualityType(rule.version,
+                                           in->GetObjectQualityType()));
       WriteField<uint32>(fixed, broadPhase + 12, 1);
       WriteField<uint32>(fixed, RigidBodyHk550AllowedPenetrationOffset(),
                          0x7f7fffeeu);
       WriteField<uint32>(fixed, RigidBodyHk550MultiThreadCheckOffset(),
                          0x80000000u);
+    } else {
+      WriteField<uint8>(fixed, broadPhase + 6, in->GetObjectQualityType());
     }
     WriteField<uint32>(fixed, broadPhase + 8, in->GetCollisionFilterInfo());
 
@@ -2590,6 +2610,20 @@ struct hkpRigidBodyWriter : HkpWriter<hkpRigidBody> {
     WriteField<uint8>(fixed, material, in->GetMaterialResponseType());
     WriteField<float>(fixed, material + 4, in->GetMaterialFriction());
     WriteField<float>(fixed, material + 8, in->GetMaterialRestitution());
+
+    if (rule.version == HK2014 || rule.version == HK2014_2) {
+      WriteField<float>(fixed, 0x5c, in->GetAllowedPenetrationDepth());
+      WriteField<float>(fixed, 0x98, in->GetDamageMultiplier());
+      WriteField<uint16>(fixed, 0xa4, in->GetStorageIndex());
+      WriteField<uint16>(fixed, 0xa6, in->GetContactPointCallbackDelay());
+      WriteField<uint32>(fixed, 0xd0, in->GetUid());
+      WriteField<uint8>(fixed, 0xda,
+                        in->GetSpuCollisionCallbackEventFilter());
+      WriteField<uint8>(fixed, 0xdb,
+                        in->GetSpuCollisionCallbackUserFilter());
+      WriteField<uint8>(fixed, 0x21, in->GetForceCollideOntoPpu());
+      WriteField<uint32>(fixed, 0x218, in->GetNpData());
+    }
 
     WriteMotion(fixed);
 
@@ -4035,6 +4069,69 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     return ReadValue<float>(
         data, RigidBodyMaterialOffset(this->rule.version, this->rule.x64) + 8,
         this->DataNeedsEndianSwap());
+  }
+
+  float GetAllowedPenetrationDepth() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<float>(data, 0x5c, this->DataNeedsEndianSwap());
+    }
+    return hkpRigidBody::GetAllowedPenetrationDepth();
+  }
+
+  float GetDamageMultiplier() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<float>(data, 0x98, this->DataNeedsEndianSwap());
+    }
+    return hkpRigidBody::GetDamageMultiplier();
+  }
+
+  uint16 GetStorageIndex() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<uint16>(data, 0xa4, this->DataNeedsEndianSwap());
+    }
+    return hkpRigidBody::GetStorageIndex();
+  }
+
+  uint16 GetContactPointCallbackDelay() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<uint16>(data, 0xa6, this->DataNeedsEndianSwap());
+    }
+    return hkpRigidBody::GetContactPointCallbackDelay();
+  }
+
+  uint32 GetUid() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<uint32>(data, 0xd0, this->DataNeedsEndianSwap());
+    }
+    return hkpRigidBody::GetUid();
+  }
+
+  uint8 GetSpuCollisionCallbackEventFilter() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<uint8>(data, 0xda);
+    }
+    return hkpRigidBody::GetSpuCollisionCallbackEventFilter();
+  }
+
+  uint8 GetSpuCollisionCallbackUserFilter() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<uint8>(data, 0xdb);
+    }
+    return hkpRigidBody::GetSpuCollisionCallbackUserFilter();
+  }
+
+  uint8 GetForceCollideOntoPpu() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<uint8>(data, 0x21);
+    }
+    return hkpRigidBody::GetForceCollideOntoPpu();
+  }
+
+  uint32 GetNpData() const override {
+    if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
+      return ReadValue<uint32>(data, 0x218, this->DataNeedsEndianSwap());
+    }
+    return hkpRigidBody::GetNpData();
   }
 
   size_t GetNumProperties() const override {
@@ -5608,6 +5705,9 @@ struct hkpConvexVerticesShapeMidInterface
     ArrayViewWithMode packed = ReadArrayWithFallback(
         data, ConvexVerticesArrayOffset(this->rule.version), this->rule.x64,
         this->DataNeedsEndianSwap(), kMaxPackedVertices);
+    if (this->rule.version == HK2014_2) {
+      packed.swapEndian = false;
+    }
     if (!ArrayViewCoveredByHeader(packed, sizeof(FourVectors), this->header)) {
       return {};
     }
@@ -5623,6 +5723,9 @@ struct hkpConvexVerticesShapeMidInterface
     ArrayViewWithMode planes = ReadArrayWithFallback(
         data, ConvexVerticesPlaneEquationsOffset(activeRule), activeRule.x64,
         this->DataNeedsEndianSwap(), kMaxPlaneEquations);
+    if (this->rule.version == HK2014_2) {
+      planes.swapEndian = false;
+    }
     if (!ArrayViewCoveredByHeader(planes, sizeof(Vector4A16), this->header)) {
       return {};
     }
@@ -5631,6 +5734,9 @@ struct hkpConvexVerticesShapeMidInterface
 
   uint32 GetShapeType() const override {
     if (this->rule.version == HK330B2) {
+      return 5;
+    }
+    if (HasHkcdShapeBase(this->rule)) {
       return 5;
     }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
@@ -5655,19 +5761,27 @@ struct hkpConvexVerticesShapeMidInterface
 
   size_t GetNumVertices() const override {
     const ArrayViewWithMode values = GetPackedVertices();
+    if (!values.view.count) {
+      return 0;
+    }
+
     CRule activeRule = this->rule;
     if (values.view.data) {
       activeRule.x64 = values.x64;
     }
-    const int32 count = ReadValue<int32>(
-        data, ConvexVerticesNumVerticesOffset(activeRule.version,
-                                              activeRule.x64),
-        this->DataNeedsEndianSwap());
-    if (count <= 0) {
-      return 0;
+
+    const size_t offset = ConvexVerticesNumVerticesOffset(activeRule.version,
+                                                          activeRule.x64);
+    int32 count = ReadValue<int32>(data, offset, this->DataNeedsEndianSwap());
+    const int32 minimumCount = static_cast<int32>((values.view.count - 1) * 4 + 1);
+    const int32 maximumCount = static_cast<int32>(values.view.count * 4);
+    if (count < minimumCount || count > maximumCount) {
+      count = ReadValue<int32>(data, offset, !this->DataNeedsEndianSwap());
     }
 
-    return static_cast<size_t>(count);
+    return count >= minimumCount && count <= maximumCount
+               ? static_cast<size_t>(count)
+               : 0;
   }
 
   decltype(0 == 0) GetVertex(size_t id, Vector4A16 &out) const override {

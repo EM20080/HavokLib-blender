@@ -144,14 +144,20 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           Havok300MetadataView(havok300MetadataProfile).rootClassNameOffset;
     } else if (toolset == HK550) {
       hdr.contentsClassNameSectionOffset = 902;
-    } else if (toolset == HK2010_2 || toolset == HK2012_2) {
+    } else if (toolset == HK2010_2 || toolset == HK2012_2 ||
+               toolset == HK2014 || toolset == HK2014_2) {
       hdr.contentsClassNameSectionOffset = 75;
     }
   }
   if (toolset == HK550)
     hdr.flags = 0xFFFFFFFF;
-  hdr.maxpredicate = -1;
-  hdr.predicateArraySizePlusPadding = -1;
+  if (toolset == HK2014 || toolset == HK2014_2) {
+    hdr.maxpredicate = 21;
+    hdr.predicateArraySizePlusPadding = 0;
+  } else {
+    hdr.maxpredicate = -1;
+    hdr.predicateArraySizePlusPadding = -1;
+  }
   hdr.contentsVersion[sizeof(hdr.contentsVersion) - 1] = char(0xFF);
   wr.Write<hkxHeaderData>(hdr);
 
@@ -163,7 +169,10 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   wr.Write<hkxSectionHeaderData>(classSection);
 
   if (version == 11) {
-    wr.Skip(16);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
   }
 
   hkxSectionHeader typeSection{};
@@ -173,7 +182,10 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   wr.Write<hkxSectionHeaderData>(typeSection);
 
   if (version == 11) {
-    wr.Skip(16);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
   }
 
   hkxSectionHeader mainSection{};
@@ -183,7 +195,10 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   wr.Write<hkxSectionHeaderData>(mainSection);
 
   if (version == 11) {
-    wr.Skip(16);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
   }
 
   classSection.absoluteDataStart = uint32(wr.Tell());
@@ -377,6 +392,24 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
           {"hkpStorageExtendedMeshShape", 0x30C05D40},
           {"hkpStorageExtendedMeshShapeMeshSubpartStorage", 0x5AAD4DE6},
           {"hkpBoxShape", 0x0C1112EA},
+      };
+
+      for (auto &sig : signatures) {
+        if (sig.first == name) {
+          return sig.second;
+        }
+      }
+    } else if (toolset == HK2014 || toolset == HK2014_2) {
+      static const std::pair<std::string_view, uint32> signatures[] = {
+          {"hkClass", 0x33D42383},
+          {"hkClassMember", 0xB0EFA719},
+          {"hkClassEnum", 0x8A3609CF},
+          {"hkClassEnumItem", 0xCE6F8A6C},
+          {"hkRootLevelContainer", 0x2772C11E},
+          {"hkpPhysicsData", 0x47A8CA83},
+          {"hkpPhysicsSystem", 0xB3CC6E64},
+          {"hkpRigidBody", 0xCD2E69E5},
+          {"hkpConvexVerticesShape", 0xC21C8B5A},
       };
 
       for (auto &sig : signatures) {
@@ -808,7 +841,8 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   }
 
   if (hasCollisionClasses &&
-      (toolset == HK550 || toolset == HK2010_2 || toolset == HK2012_2)) {
+      (toolset == HK550 || toolset == HK2010_2 || toolset == HK2012_2 ||
+       toolset == HK2014 || toolset == HK2014_2)) {
     while (GetPadding(wr.Tell(), 16)) {
       wr.Write<uint8>(0xFF);
     }
@@ -1087,13 +1121,19 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   wr.Write<hkxSectionHeaderData>(classSection);
 
   if (version == 11) {
-    wr.Skip(16);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
   }
 
   wr.Write<hkxSectionHeaderData>(typeSection);
 
   if (version == 11) {
-    wr.Skip(16);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
+    wr.Write<int32>(-1);
   }
 
   wr.Write<hkxSectionHeaderData>(mainSection);

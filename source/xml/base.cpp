@@ -112,6 +112,10 @@ const std::map<hkToolset, xmlToolsetProp> xmlToolsetProps = {
                              xmlToolsetProp::MaxPredicate},
                             11,
                             "hk_2014.1.0-r1"}},
+    {HK2014_2, xmlToolsetProp{{xmlToolsetProp::TopLevelObject,
+                               xmlToolsetProp::MaxPredicate},
+                              11,
+                              "hk_2014.2.0-r1"}},
 };
 
 void IhkPackFile::ToXML(pugi::xml_node nde, hkToolset toolsetVersion) {

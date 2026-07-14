@@ -122,6 +122,15 @@ struct hkpRigidBody : IhkVirtualClass {
   }
   virtual uint16 GetSavedQualityTypeIndex() const { return 0; }
   virtual const hkpShape *GetShape() const = 0;
+  virtual float GetAllowedPenetrationDepth() const { return 0.1f; }
+  virtual float GetDamageMultiplier() const { return 1.0f; }
+  virtual uint16 GetStorageIndex() const { return 0xffff; }
+  virtual uint16 GetContactPointCallbackDelay() const { return 0xffff; }
+  virtual uint32 GetUid() const { return 0xffffffff; }
+  virtual uint8 GetSpuCollisionCallbackEventFilter() const { return 3; }
+  virtual uint8 GetSpuCollisionCallbackUserFilter() const { return 1; }
+  virtual uint8 GetForceCollideOntoPpu() const { return 0; }
+  virtual uint32 GetNpData() const { return 0; }
 };
 
 struct hkpShape : IhkVirtualClass {

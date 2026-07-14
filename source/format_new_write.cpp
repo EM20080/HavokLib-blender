@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <sstream>
 #include <unordered_map>
-#include "havok_2016_metadata.inl"
 
 namespace {
 
@@ -54,6 +53,7 @@ struct TagfileType {
   uint16 numInterfaces;
 };
 
+#include "havok_2016_metadata.inl"
 
 enum TagfileSubType : uint8 {
   TagfileString = 3,

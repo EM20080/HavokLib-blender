@@ -2012,11 +2012,30 @@ void QuantizeMoppPrimitives(std::vector<MoppPrimitive> &primitives,
   }
 }
 
-void EmitJump32(std::vector<uint8> &code, uint32 offset) {
+void EmitMoppJump32(std::vector<uint8> &code, uint32 offset) {
   code.emplace_back(static_cast<uint8>(0x08));
   code.emplace_back(static_cast<uint8>(offset >> 24));
   code.emplace_back(static_cast<uint8>(offset >> 16));
   code.emplace_back(static_cast<uint8>(offset >> 8));
+  code.emplace_back(static_cast<uint8>(offset));
+}
+
+void EmitMoppJump(std::vector<uint8> &code, uint32 offset) {
+  if (offset < 0xff) {
+    code.emplace_back(static_cast<uint8>(0x05));
+  } else if (offset < 0xffff) {
+    code.emplace_back(static_cast<uint8>(0x06));
+    code.emplace_back(static_cast<uint8>(offset >> 8));
+  } else if (offset < 0xffffff) {
+    code.emplace_back(static_cast<uint8>(0x07));
+    code.emplace_back(static_cast<uint8>(offset >> 16));
+    code.emplace_back(static_cast<uint8>(offset >> 8));
+  } else {
+    code.emplace_back(static_cast<uint8>(0x08));
+    code.emplace_back(static_cast<uint8>(offset >> 24));
+    code.emplace_back(static_cast<uint8>(offset >> 16));
+    code.emplace_back(static_cast<uint8>(offset >> 8));
+  }
   code.emplace_back(static_cast<uint8>(offset));
 }
 
@@ -2166,7 +2185,8 @@ std::vector<uint8> EmitMoppNodeHk550(
 }
 
 std::vector<uint8> EmitMoppNode(const std::vector<MoppPrimitive> &primitives,
-                                std::vector<size_t> ids, size_t depth) {
+                                std::vector<size_t> ids, size_t depth,
+                                bool modernJumps) {
   if (ids.empty()) {
     return {0x00};
   }
@@ -2233,10 +2253,10 @@ std::vector<uint8> EmitMoppNode(const std::vector<MoppPrimitive> &primitives,
   const uint8 offsetHigh =
       static_cast<uint8>((std::min)(255, static_cast<int>(leftMax) + 1));
   const uint8 offsetLow = rightMin;
-  std::vector<uint8> left = EmitMoppNode(primitives, std::move(leftIds),
-                                         depth + 1);
-  std::vector<uint8> right = EmitMoppNode(primitives, std::move(rightIds),
-                                          depth + 1);
+  std::vector<uint8> left = EmitMoppNode(
+      primitives, std::move(leftIds), depth + 1, modernJumps);
+  std::vector<uint8> right = EmitMoppNode(
+      primitives, std::move(rightIds), depth + 1, modernJumps);
 
   std::vector<uint8> code;
   if (left.size() <= 0xffff) {
@@ -2253,22 +2273,41 @@ std::vector<uint8> EmitMoppNode(const std::vector<MoppPrimitive> &primitives,
     return code;
   }
 
-  code.reserve(17 + left.size() + right.size());
-  code.emplace_back(MoppSplitJumpCommand(axis));
+  if (!modernJumps) {
+    code.reserve(17 + left.size() + right.size());
+    code.emplace_back(MoppSplitJumpCommand(axis));
+    code.emplace_back(offsetHigh);
+    code.emplace_back(offsetLow);
+    code.emplace_back(uint8{});
+    code.emplace_back(uint8{});
+    code.emplace_back(uint8{});
+    code.emplace_back(static_cast<uint8>(5));
+    EmitMoppJump32(code, 5);
+    EmitMoppJump32(code, static_cast<uint32>(left.size()));
+    code.insert(code.end(), left.begin(), left.end());
+    code.insert(code.end(), right.begin(), right.end());
+    return code;
+  }
+
+  std::vector<uint8> rightJump;
+  EmitMoppJump(rightJump, static_cast<uint32>(left.size()));
+  std::vector<uint8> leftJump;
+  EmitMoppJump(leftJump, static_cast<uint32>(rightJump.size()));
+
+  code.reserve(4 + leftJump.size() + rightJump.size() + left.size() +
+               right.size());
+  code.emplace_back(MoppSplitCommand(axis));
   code.emplace_back(offsetHigh);
   code.emplace_back(offsetLow);
-  code.emplace_back(uint8{});
-  code.emplace_back(uint8{});
-  code.emplace_back(uint8{});
-  code.emplace_back(static_cast<uint8>(5));
-  EmitJump32(code, 5);
-  EmitJump32(code, static_cast<uint32>(left.size()));
+  code.emplace_back(static_cast<uint8>(leftJump.size()));
+  code.insert(code.end(), leftJump.begin(), leftJump.end());
+  code.insert(code.end(), rightJump.begin(), rightJump.end());
   code.insert(code.end(), left.begin(), left.end());
   code.insert(code.end(), right.begin(), right.end());
   return code;
 }
 
-GeneratedMopp BuildMoppCode(const hkpShape *childShape) {
+GeneratedMopp BuildMoppCode(const hkpShape *childShape, hkToolset version) {
   std::vector<MoppPrimitive> primitives;
   GatherMoppPrimitives(childShape, primitives);
 
@@ -2285,7 +2324,8 @@ GeneratedMopp BuildMoppCode(const hkpShape *childShape) {
     ids[i] = i;
   }
 
-  out.code = EmitMoppNode(primitives, std::move(ids), 0);
+  out.code = EmitMoppNode(primitives, std::move(ids), 0,
+                          version >= HK2010_1);
   out.code.insert(out.code.end(), 3, 0xcd);
   return out;
 }
@@ -2821,7 +2861,7 @@ struct hkpMoppBvTreeShapeWriter : HkpWriter<hkpMoppBvTreeShape> {
         (rule.version == HK550 || !code->GetData() || !code->GetDataSize())) {
       auto generated = rule.version == HK550
                            ? BuildMoppCodeHk550(in->GetChildShape())
-                           : BuildMoppCode(in->GetChildShape());
+                           : BuildMoppCode(in->GetChildShape(), rule.version);
       if (!generated.code.empty()) {
         GeneratedMoppCode()[code] = std::move(generated);
       }

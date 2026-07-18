@@ -773,8 +773,6 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "hkpPhysicsData",
         "hkpPhysicsSystem",
         "hkpRigidBody",
-        "hkpStaticCompoundShape",
-        "hkpBvCompressedMeshShape",
         "hkpMoppBvTreeShape",
         "hkpMoppCode",
         "hkpStorageExtendedMeshShape",
@@ -783,6 +781,14 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
         "hkpCompressedSampledHeightFieldShape",
     };
     writeOldClassNames(hk2010CollisionClassNames);
+
+    if (toolset == HK2012_2) {
+      static const std::string_view hk2012CollisionClassNames[] = {
+          "hkpStaticCompoundShape",
+          "hkpBvCompressedMeshShape",
+      };
+      writeOldClassNames(hk2012CollisionClassNames);
+    }
   }
 
   CRule rule(toolset, layout.reusePaddingOptimization,

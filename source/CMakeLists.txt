@@ -1,35 +1,24 @@
 file(GLOB_RECURSE CORE_SOURCE_FILES "*.cpp")
 
-set(HAVOK_2016_METADATA_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
-set(HAVOK_2016_METADATA ${HAVOK_2016_METADATA_DIR}/havok_2016_metadata.inl)
+set(METADATA_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+set(TYPES ${METADATA_DIR}/types.inl)
+set(NEW_METADATA ${METADATA_DIR}/metadata_new.inl)
 add_custom_command(
-  OUTPUT ${HAVOK_2016_METADATA}
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${HAVOK_2016_METADATA_DIR}
+  OUTPUT ${TYPES} ${NEW_METADATA}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${METADATA_DIR}
   COMMAND ${Python3_EXECUTABLE}
-          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/format_new_metadata.py
-          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/format_new_metadata.bin
-          ${HAVOK_2016_METADATA}
+          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/metadata.py
+          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/metadata.bin
+          ${TYPES}
+          ${NEW_METADATA}
   DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/format_new_metadata.py
-    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/format_new_metadata.bin
+    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/metadata.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/metadata.bin
   VERBATIM)
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/format_new_write.cpp
-                            PROPERTIES OBJECT_DEPENDS ${HAVOK_2016_METADATA})
-
-set(HAVOK_300_METADATA ${HAVOK_2016_METADATA_DIR}/havok_300_metadata.inl)
-add_custom_command(
-  OUTPUT ${HAVOK_300_METADATA}
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${HAVOK_2016_METADATA_DIR}
-  COMMAND ${Python3_EXECUTABLE}
-          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/havok300metadata.py
-          ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/havok300metadata.bin
-          ${HAVOK_300_METADATA}
-  DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/havok300metadata.py
-    ${CMAKE_CURRENT_SOURCE_DIR}/../classgen/havok300metadata.bin
-  VERBATIM)
+                            PROPERTIES OBJECT_DEPENDS ${NEW_METADATA})
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/format_old_write.cpp
-                            PROPERTIES OBJECT_DEPENDS ${HAVOK_300_METADATA})
+                            PROPERTIES OBJECT_DEPENDS ${TYPES})
 
 add_library(havok-interface INTERFACE)
 target_include_directories(havok-interface INTERFACE ../include)
@@ -47,7 +36,7 @@ if(NOT NO_OBJECTS)
     POSITION_INDEPENDENT_CODE ${OBJECTS_PID}
     INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${HAVOK_2016_METADATA_DIR}
+    ${METADATA_DIR}
     ${HAVOK_CLASSGEN_DIR}
     ${HAVOK_CLASSGEN_DIR}/custom
     LINKS
@@ -83,7 +72,7 @@ if(BUILD_SHARED_LIBS)
     ${CORE_SOURCE_FILES}
     INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${HAVOK_2016_METADATA_DIR}
+    ${METADATA_DIR}
     ${HAVOK_CLASSGEN_DIR}
     ${HAVOK_CLASSGEN_DIR}/custom
     LINKS

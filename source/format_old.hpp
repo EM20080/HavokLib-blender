@@ -133,6 +133,7 @@ struct hkxHeaderData {
 
 struct hkxHeader : hkxHeaderData, IhkPackFile {
   hkToolset toolset;
+  bool writeMetadata{};
 
   std::vector<hkxSectionHeader> sections;
 

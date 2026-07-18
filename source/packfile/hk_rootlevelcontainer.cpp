@@ -27,8 +27,6 @@ namespace {
 void ApplyVariantStringPadding(BinWritterRef_e wr, hkToolset version) {
   switch (version) {
   case HK550:
-  case HK2010_1:
-  case HK2010_2:
   case HK2012_1:
   case HK2012_2:
   case HK2014:
@@ -149,9 +147,11 @@ struct hkRootLevelContainerSaver {
 
         if (i.pointer) {
           locals[curFixup].destClass = i.pointer;
-          if (out->LayoutVersion() == HK330B2) {
+          if (out->LayoutVersion() == HK330B2 ||
+              out->LayoutVersion() == HK550) {
             fixups.typeClasses.push_back(
-                {locals[curFixup].strOffset + sizeof(uint32),
+                {locals[curFixup].strOffset +
+                     (out->lookup.x64 ? sizeof(uint64) : sizeof(uint32)),
                  std::string(className)});
           }
         } else if (std::string_view(i.className) == "hkxScene") {

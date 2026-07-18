@@ -44,6 +44,7 @@ struct HK_EXTERN IhkPackFile {
   void ToXML(pugi::xml_node node, hkToolset toolset);
 
   // rule must be as hex, ie. 0x4101
-  void ToPackFile(const std::string &fileName, hkToolset toolset, uint32 rule);
+  void ToPackFile(const std::string &fileName, hkToolset toolset, uint32 rule,
+                  bool m_metadata = false);
   void ToTagFile(const std::string &fileName, hkToolset toolset);
 };

@@ -24,7 +24,16 @@
 #include "internal/hk_internal_api.hpp"
 #include "spike/crypto/jenkinshash.hpp"
 #include "spike/io/binwritter.hpp"
-#include "havok_300_metadata.inl"
+#include "types.inl"
+
+const TypeEntry *FindTypes(hkToolset toolset, uint8 profile) {
+  for (const TypeEntry &entry : typeEntries) {
+    if (entry.toolset == toolset && entry.profile == profile) {
+      return &entry;
+    }
+  }
+  return nullptr;
+}
 
 uint32 Havok300MetadataValue(const unsigned char *data, size_t offset = 0) {
   return uint32(data[offset]) | (uint32(data[offset + 1]) << 8) |
@@ -83,6 +92,157 @@ uint32 MetadataFixupValue(const unsigned char *data, size_t offset) {
          (uint32(data[offset + 3]) << 24);
 }
 
+void SwapType16(std::vector<unsigned char> &data, size_t offset) {
+  std::swap(data[offset], data[offset + 1]);
+}
+
+void SwapType32(std::vector<unsigned char> &data, size_t offset) {
+  std::swap(data[offset], data[offset + 3]);
+  std::swap(data[offset + 1], data[offset + 2]);
+}
+
+void WriteClassNames(BinWritterRef_e wr, const TypeEntry &types,
+                     bool swapEndian) {
+  if (!swapEndian) {
+    wr.WriteBuffer(reinterpret_cast<const char *>(types.ClassData()),
+                   types.classSize);
+    return;
+  }
+
+  const unsigned char *source = types.ClassData();
+  std::vector<unsigned char> data(source, source + types.classSize);
+  size_t offset = 0;
+  while (offset + 5 <= data.size() && data[offset] != 0xff &&
+         data[offset + 4] == '\t') {
+    SwapType32(data, offset);
+    offset += 5 + std::string_view(reinterpret_cast<const char *>(
+                                      source + offset + 5))
+                      .size() +
+              1;
+  }
+  wr.WriteBuffer(reinterpret_cast<const char *>(data.data()), data.size());
+}
+
+void WriteTypes(BinWritterRef_e wr, const TypeEntry &types, bool swapEndian) {
+  if (!swapEndian) {
+    wr.WriteBuffer(reinterpret_cast<const char *>(types.TypeData()),
+                   types.typeSize);
+    return;
+  }
+
+  const unsigned char *source = types.TypeData();
+  std::vector<unsigned char> data(source, source + types.typeSize);
+
+  auto localDestination = [&](size_t pointer) {
+    for (size_t offset = types.typeLocal;
+         offset + 8 <= types.typeGlobal; offset += 8) {
+      if (MetadataFixupValue(source, offset) == pointer) {
+        return size_t(MetadataFixupValue(source, offset + 4));
+      }
+    }
+    return ~size_t{};
+  };
+
+  auto swapMember = [&](size_t offset) {
+    SwapType16(data, offset + 14);
+    SwapType16(data, offset + 16);
+    SwapType16(data, offset + 18);
+  };
+
+  auto swapEnum = [&](size_t offset) {
+    const uint32 numItems = MetadataFixupValue(source, offset + 8);
+    const size_t items = localDestination(offset + 4);
+    SwapType32(data, offset + 8);
+    SwapType32(data, offset + 16);
+    if (items != ~size_t{}) {
+      for (uint32 index = 0; index < numItems; index++) {
+        SwapType32(data, items + index * 8);
+      }
+    }
+  };
+
+  auto swapClass = [&](size_t offset) {
+    const uint32 numEnums = MetadataFixupValue(source, offset + 20);
+    const uint32 numMembers = MetadataFixupValue(source, offset + 28);
+    const size_t enums = localDestination(offset + 16);
+    const size_t members = localDestination(offset + 24);
+    if (enums != ~size_t{}) {
+      for (uint32 index = 0; index < numEnums; index++) {
+        swapEnum(enums + index * 20);
+      }
+    }
+    if (members != ~size_t{}) {
+      for (uint32 index = 0; index < numMembers; index++) {
+        swapMember(members + index * 24);
+      }
+    }
+    SwapType32(data, offset + 8);
+    SwapType32(data, offset + 12);
+    SwapType32(data, offset + 20);
+    SwapType32(data, offset + 28);
+    SwapType32(data, offset + 40);
+    SwapType32(data, offset + 44);
+  };
+
+  for (size_t offset = types.typeVirtual;
+       offset + 12 <= types.typeExports; offset += 12) {
+    const uint32 objectOffset = MetadataFixupValue(source, offset);
+    if (objectOffset == uint32(-1)) {
+      break;
+    }
+    const uint32 nameOffset = MetadataFixupValue(source, offset + 8);
+    const std::string_view name(reinterpret_cast<const char *>(
+        types.ClassData() + nameOffset));
+    if (name == "hkClass") {
+      swapClass(objectOffset);
+    } else if (name == "hkClassEnum") {
+      swapEnum(objectOffset);
+    }
+  }
+
+  for (size_t offset = types.typeLocal;
+       offset + 8 <= types.typeGlobal; offset += 8) {
+    SwapType32(data, offset);
+    SwapType32(data, offset + 4);
+  }
+  for (size_t offset = types.typeGlobal;
+       offset + 12 <= types.typeVirtual; offset += 12) {
+    SwapType32(data, offset);
+    SwapType32(data, offset + 4);
+    SwapType32(data, offset + 8);
+  }
+  for (size_t offset = types.typeVirtual;
+       offset + 12 <= types.typeExports; offset += 12) {
+    SwapType32(data, offset);
+    SwapType32(data, offset + 4);
+    SwapType32(data, offset + 8);
+  }
+
+  wr.WriteBuffer(reinterpret_cast<const char *>(data.data()), data.size());
+}
+
+size_t TypeClassOffset(const TypeEntry &types, std::string_view className) {
+  const unsigned char *data = types.TypeData();
+  for (size_t v = types.typeVirtual; v + 12 <= types.typeExports; v += 12) {
+    const uint32 objectOffset = MetadataFixupValue(data, v);
+    if (objectOffset == uint32(-1)) {
+      break;
+    }
+    for (size_t l = types.typeLocal; l + 8 <= types.typeGlobal; l += 8) {
+      if (MetadataFixupValue(data, l) != objectOffset) {
+        continue;
+      }
+      const uint32 nameOffset = MetadataFixupValue(data, l + 4);
+      if (nameOffset < types.typeLocal &&
+          className == reinterpret_cast<const char *>(data + nameOffset)) {
+        return objectOffset;
+      }
+      break;
+    }
+  }
+  return ~size_t{};
+}
+
 size_t Havok300TypeClassOffset(std::string_view className,
                                uint32 profile) {
   const Havok300MetadataView metadata(profile);
@@ -116,6 +276,7 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   wr.SwapEndian((layout.littleEndian != 0) != LittleEndian());
 
   bool hasCollisionClasses = false;
+  bool hasSkeletonClasses = false;
   uint32 havok300MetadataProfile = 0;
   for (auto &c : classes) {
     if (safe_deref_cast<const hkpPhysicsData>(c.get()) ||
@@ -133,12 +294,26 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     if (safe_deref_cast<const hkpListShape>(c.get())) {
       havok300MetadataProfile |= 4;
     }
+    if (safe_deref_cast<const hkaSkeleton>(c.get())) {
+      hasSkeletonClasses = true;
+    }
   }
+
+  const uint8 typeProfile = hasCollisionClasses ? 2
+                            : hasSkeletonClasses ? 1
+                                                 : 0;
+  const TypeEntry *types =
+      writeMetadata && toolset != HK330B2
+          ? FindTypes(toolset, typeProfile)
+          : nullptr;
 
   hkxHeaderData hdr = *this;
   hdr.numSections = 3;
   hdr.contentsSectionIndex = dataSectionId;
-  if (hasCollisionClasses) {
+  if (types) {
+    hdr.contentsClassNameSectionOffset =
+        static_cast<int32>(types->contentsClassNameOffset);
+  } else if (hasCollisionClasses) {
     if (toolset == HK330B2) {
       hdr.contentsClassNameSectionOffset =
           Havok300MetadataView(havok300MetadataProfile).rootClassNameOffset;
@@ -446,6 +621,19 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
       cnOffsetMap[name] = offset + 5;
       offset += 5 + std::string_view(name).size() + 1;
     }
+  } else if (types) {
+    WriteClassNames(wr, *types, toolset == HK550 && !layout.littleEndian);
+    size_t offset = 0;
+    const unsigned char *classData = types->ClassData();
+    while (offset + 5 <= types->classSize) {
+      if (classData[offset] == 0xff || classData[offset + 4] != '\t') {
+        break;
+      }
+      const char *name = reinterpret_cast<const char *>(
+          classData + offset + 5);
+      cnOffsetMap[name] = offset + 5;
+      offset += 5 + std::string_view(name).size() + 1;
+    }
   } else {
     static const std::string_view reqClassNames[] = {
         "hkClass", "hkClassMember", "hkClassEnum", "hkClassEnumItem"};
@@ -455,6 +643,9 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   }
 
   auto writeOldClassNames = [&](const auto &classNames) {
+    if (types) {
+      return;
+    }
     for (auto &c : classNames) {
       if (!cnOffsetMap.contains(std::string(c))) {
         writeClassName(c);
@@ -600,6 +791,13 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   for (auto &c : classes) {
     auto dc = checked_deref_cast<const hkVirtualClass>(c.get());
     auto clName = dc->GetClassName(toolset);
+    if (toolset <= HK550) {
+      if (clName == "hkaSplineCompressedAnimation") {
+        clName = "hkaSplineSkeletalAnimation";
+      } else if (clName == "hkaInterleavedUncompressedAnimation") {
+        clName = "hkaInterleavedSkeletalAnimation";
+      }
+    }
     auto nClass = hkVirtualClass::Create(clName, rule);
 
     if (!nClass) {
@@ -903,6 +1101,14 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
     typeSection.importsOffset = typeSection.exportsOffset;
     typeSection.bufferSize = typeSection.exportsOffset;
     wr.ResetRelativeOrigin(false);
+  } else if (types) {
+    WriteTypes(wr, *types, toolset == HK550 && !layout.littleEndian);
+    typeSection.localFixupsOffset = types->typeLocal;
+    typeSection.globalFixupsOffset = types->typeGlobal;
+    typeSection.virtualFixupsOffset = types->typeVirtual;
+    typeSection.exportsOffset = types->typeExports;
+    typeSection.importsOffset = types->typeImports;
+    typeSection.bufferSize = types->typeSize;
   } else {
     typeSection.bufferSize = 0;
     typeSection.exportsOffset = 0;
@@ -1066,9 +1272,13 @@ void hkxHeader::Save(BinWritterRef_e wr, const VirtualClasses &classes) const {
   }
 
   for (auto &typeClass : fixups.typeClasses) {
-    const size_t destination =
-        Havok300TypeClassOffset(typeClass.className,
-                                havok300MetadataProfile);
+    size_t destination = npos;
+    if (toolset == HK330B2) {
+      destination = Havok300TypeClassOffset(typeClass.className,
+                                            havok300MetadataProfile);
+    } else if (types) {
+      destination = TypeClassOffset(*types, typeClass.className);
+    }
     if (destination != npos) {
       mainSection.globalFixups.emplace_back(typeClass.offset, 1, destination);
     }

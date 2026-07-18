@@ -53,7 +53,7 @@ struct TagfileType {
   uint16 numInterfaces;
 };
 
-#include "havok_2016_metadata.inl"
+#include "metadata_new.inl"
 
 enum TagfileSubType : uint8 {
   TagfileString = 3,

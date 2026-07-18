@@ -93,7 +93,7 @@ IhkPackFile::VirtualClassesRef IhkPackFile::GetClasses(JenHash hash) {
 }
 
 void IhkPackFile::ToPackFile(const std::string &fileName, hkToolset toolset,
-                             uint32 rule) {
+                             uint32 rule, bool m_metadata) {
   if (toolset == HKUNKVER || toolset > HK2014) {
     throw es::InvalidVersionError(toolset);
   }
@@ -139,6 +139,7 @@ void IhkPackFile::ToPackFile(const std::string &fileName, hkToolset toolset,
   hkHead.layout = layout;
   hkHead.version = prop.version;
   hkHead.toolset = toolset;
+  hkHead.writeMetadata = m_metadata || toolset == HK550;
   memcpy(hkHead.contentsVersion, prop.name, sizeof(hkHead.contentsVersion));
   hkHead.Save(wr, GetAllClasses());
 }

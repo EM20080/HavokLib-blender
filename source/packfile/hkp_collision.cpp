@@ -412,7 +412,7 @@ size_t RigidBodyHk550AllowedPenetrationOffset() { return 88; }
 size_t RigidBodyHk550MultiThreadCheckOffset() { return 100; }
 
 uint16 StoredQualityType(hkToolset version, uint8 quality) {
-  if (version == HK550) {
+  if (version == HK510 || version == HK550) {
     if (quality == 0xffu) {
       return 0;
     }
@@ -425,7 +425,7 @@ uint16 StoredQualityType(hkToolset version, uint8 quality) {
 
 uint8 RuntimeQualityType(hkToolset version, const char *data, size_t offset,
                          uint8 swapEndian) {
-  if (version == HK550) {
+  if (version == HK510 || version == HK550) {
     const uint16 stored = ReadValue<uint16>(data, offset, swapEndian);
     return stored ? static_cast<uint8>(stored - 1) : 0;
   }
@@ -716,6 +716,7 @@ size_t PhysicsSystemFixedSize(hkToolset version) {
   return version == HK330B2 ? 64 : 80;
 }
 constexpr size_t kMoppBvTreeShapeFixedSize = 64;
+constexpr size_t kSimpleMeshShapeFixedSize = 80;
 constexpr size_t kStaticCompoundShapeFixedSize = 112;
 constexpr size_t kStaticCompoundInstanceSize = 64;
 constexpr size_t kStaticCompoundTreeNodeSize = 6;
@@ -902,6 +903,10 @@ void WriteShapeBase(std::vector<char> &buffer, CRule rule,
   if (HasHkcdShapeBase(rule)) {
     WriteField<uint32>(buffer, 8, 0x00000400u);
     WriteField<uint32>(buffer, 12, shape ? shape->GetShapeUserData() : 0);
+    return;
+  }
+
+  if (rule.version == HK500 || rule.version == HK510) {
     return;
   }
 
@@ -1097,6 +1102,13 @@ void AddShapeAabb(const hkpShape *shape, Bounds &bounds) {
       for (size_t i = 0; i < subpart->GetNumShapes(); i++) {
         AddShapeAabb(subpart->GetShape(i), bounds);
       }
+    }
+    return;
+  }
+
+  if (const auto *mesh = safe_deref_cast<const hkpSimpleMeshShape>(shape)) {
+    for (size_t i = 0; i < mesh->GetNumVertices(); i++) {
+      bounds.Add(mesh->GetVertex(i));
     }
     return;
   }
@@ -1964,6 +1976,23 @@ void GatherMoppPrimitives(const hkpShape *shape,
     return;
   }
 
+  if (const auto *mesh = safe_deref_cast<const hkpSimpleMeshShape>(shape)) {
+    const size_t numVertices = mesh->GetNumVertices();
+    for (size_t i = 0; i < mesh->GetNumTriangles(); i++) {
+      const auto triangle = mesh->GetTriangle(i);
+      if (triangle.a >= numVertices || triangle.b >= numVertices ||
+          triangle.c >= numVertices) {
+        continue;
+      }
+      Bounds bounds;
+      bounds.Add(mesh->GetVertex(triangle.a));
+      bounds.Add(mesh->GetVertex(triangle.b));
+      bounds.Add(mesh->GetVertex(triangle.c));
+      AddPrimitive(primitives, static_cast<uint32>(i), bounds);
+    }
+    return;
+  }
+
   if (const auto *list = safe_deref_cast<const hkpListShape>(shape)) {
     for (size_t i = 0; i < list->GetNumChildren(); i++) {
       AddPrimitive(primitives, static_cast<uint32>(i),
@@ -2484,7 +2513,7 @@ struct hkpRigidBodyWriter : HkpWriter<hkpRigidBody> {
                      Vector4A16(0.0f, 0.0f, 0.0f, 0.0f));
     WriteField<float>(fixed, state + 160, in->GetMotionObjectRadius());
 
-    if (rule.version == HK550) {
+    if (rule.version == HK510 || rule.version == HK550) {
       WriteField<float>(fixed, state + 164, in->GetLinearDamping());
       WriteField<float>(fixed, state + 168, in->GetAngularDamping());
       WriteField<uint8>(fixed, state + 172, in->GetMaxLinearVelocity());
@@ -2514,7 +2543,7 @@ struct hkpRigidBodyWriter : HkpWriter<hkpRigidBody> {
     WriteField<uint32>(fixed, motion + 280, 0);
     WriteField<uint16>(fixed, motion + 284, in->GetSavedQualityTypeIndex());
 
-    if (rule.version != HK550) {
+    if (rule.version != HK510 && rule.version != HK550) {
       WriteField<uint16>(fixed, motion + 286,
                          FloatToHalfBits(in->GetGravityFactor()));
     }
@@ -2628,7 +2657,7 @@ struct hkpRigidBodyWriter : HkpWriter<hkpRigidBody> {
 
     const size_t broadPhase = BroadPhaseHandleOffset(rule.version, false);
     WriteField<uint8>(fixed, broadPhase + 4, 1);
-    if (rule.version == HK550) {
+    if (rule.version == HK510 || rule.version == HK550) {
       WriteField<uint16>(fixed, broadPhase + 6,
                          StoredQualityType(rule.version,
                                            in->GetObjectQualityType()));
@@ -2842,7 +2871,9 @@ struct hkpMoppCodeWriter : HkpWriter<hkpMoppCode> {
     WriteVectorField(fixed, MoppCodeInfoOffset(rule.version), Offset());
     WriteArrayHeader(fixed, MoppCodeDataOffset(rule.version), data.size(),
                      rule.version);
-    WriteField<uint8>(fixed, MoppCodeBuildTypeOffset(rule.version), 1);
+    if (rule.version != HK510) {
+      WriteField<uint8>(fixed, MoppCodeBuildTypeOffset(rule.version), 1);
+    }
 
     const size_t begin = wr.Tell();
     WriteBuffer(wr, fixed);
@@ -2857,9 +2888,9 @@ struct hkpMoppBvTreeShapeWriter : HkpWriter<hkpMoppBvTreeShape> {
   hkpMoppBvTreeShapeWriter(CRule rule_, const hkpMoppBvTreeShape *in_)
       : HkpWriter(rule_, in_) {
     const auto *code = in->GetCode();
-    if (code &&
-        (rule.version == HK550 || !code->GetData() || !code->GetDataSize())) {
-      auto generated = rule.version == HK550
+    if (code && (rule.version == HK510 || rule.version == HK550 ||
+                 !code->GetData() || !code->GetDataSize())) {
+      auto generated = (rule.version == HK510 || rule.version == HK550)
                            ? BuildMoppCodeHk550(in->GetChildShape())
                            : BuildMoppCode(in->GetChildShape(), rule.version);
       if (!generated.code.empty()) {
@@ -2882,6 +2913,46 @@ struct hkpMoppBvTreeShapeWriter : HkpWriter<hkpMoppBvTreeShape> {
     }
     if (in->GetChildShape()) {
       fixups.locals.emplace_back(begin + 52, in->GetChildShape());
+    }
+  }
+};
+
+struct hkpSimpleMeshShapeWriter : HkpWriter<hkpSimpleMeshShape> {
+  using HkpWriter::HkpWriter;
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const {
+    std::vector<Vector4A16> vertices(in->GetNumVertices());
+    for (size_t i = 0; i < vertices.size(); i++) {
+      vertices[i] = in->GetVertex(i);
+    }
+
+    auto fixed = Fixed(kSimpleMeshShapeFixedSize);
+    WriteShapeBase(fixed, rule, in);
+    WriteField<uint8>(fixed, 20, 1);
+    WriteArrayHeader(fixed, 24, vertices.size(), rule.version);
+    WriteArrayHeader(fixed, 36, in->GetNumTriangles(), rule.version);
+    WriteArrayHeader(fixed, 48, 0, rule.version);
+    WriteField<float>(fixed, 60, in->GetRadius());
+    WriteField<uint8>(fixed, 64, in->GetWeldingType());
+
+    const size_t begin = wr.Tell();
+    WriteBuffer(wr, fixed);
+    SaveValueArray(wr, fixups, begin, 24, vertices.data(), vertices.size(),
+                   sizeof(Vector4A16));
+
+    if (in->GetNumTriangles()) {
+      wr.ApplyPadding();
+      fixups.locals.emplace_back(begin + 36, wr.Tell());
+      std::vector<char> triangles(in->GetNumTriangles() * 16, 0);
+      for (size_t i = 0; i < in->GetNumTriangles(); i++) {
+        const auto triangle = in->GetTriangle(i);
+        const size_t offset = i * 16;
+        WriteField<uint32>(triangles, offset, triangle.a);
+        WriteField<uint32>(triangles, offset + 4, triangle.b);
+        WriteField<uint32>(triangles, offset + 8, triangle.c);
+        WriteField<uint16>(triangles, offset + 12, triangle.weldingInfo);
+      }
+      WriteBuffer(wr, triangles);
     }
   }
 };
@@ -4002,7 +4073,7 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     if (const char *motion = Hk330Motion()) {
       return ReadValue<float>(motion, 200, this->DataNeedsEndianSwap());
     }
-    if (this->rule.version == HK550) {
+    if (this->rule.version == HK510 || this->rule.version == HK550) {
       return ReadValue<float>(data, MotionStateOffset() + 164,
                               this->DataNeedsEndianSwap());
     }
@@ -4014,7 +4085,7 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     if (const char *motion = Hk330Motion()) {
       return ReadValue<float>(motion, 204, this->DataNeedsEndianSwap());
     }
-    if (this->rule.version == HK550) {
+    if (this->rule.version == HK510 || this->rule.version == HK550) {
       return ReadValue<float>(data, MotionStateOffset() + 168,
                               this->DataNeedsEndianSwap());
     }
@@ -4026,15 +4097,18 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     if (this->rule.version == HK330B2) {
       return 1.0f;
     }
-    return this->rule.version == HK550 ? 1.0f
-                                       : ReadHalfFloat(MotionStateOffset() + 168);
+    return this->rule.version == HK510 || this->rule.version == HK550
+               ? 1.0f
+               : ReadHalfFloat(MotionStateOffset() + 168);
   }
 
   float GetGravityFactor() const override {
     if (this->rule.version == HK330B2) {
       return 1.0f;
     }
-    return this->rule.version == HK550 ? 1.0f : ReadHalfFloat(MotionOffset() + 286);
+    return this->rule.version == HK510 || this->rule.version == HK550
+               ? 1.0f
+               : ReadHalfFloat(MotionOffset() + 286);
   }
 
   uint8 GetDeactivationIntegrateCounter() const override {
@@ -4064,7 +4138,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     }
     return ReadValue<uint8>(data,
                             MotionStateOffset() +
-                                (this->rule.version == HK550 ? 172 : 170));
+                                (this->rule.version == HK510 ||
+                                         this->rule.version == HK550
+                                     ? 172
+                                     : 170));
   }
 
   uint8 GetMaxAngularVelocity() const override {
@@ -4074,7 +4151,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     }
     return ReadValue<uint8>(data,
                             MotionStateOffset() +
-                                (this->rule.version == HK550 ? 173 : 171));
+                                (this->rule.version == HK510 ||
+                                         this->rule.version == HK550
+                                     ? 173
+                                     : 171));
   }
 
   uint8 GetDeactivationClass() const override {
@@ -4084,7 +4164,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     }
     return ReadValue<uint8>(data,
                             MotionStateOffset() +
-                                (this->rule.version == HK550 ? 174 : 172));
+                                (this->rule.version == HK510 ||
+                                         this->rule.version == HK550
+                                     ? 174
+                                     : 172));
   }
 
   uint16 GetSavedQualityTypeIndex() const override {
@@ -4578,6 +4661,7 @@ struct hkpSimpleMeshShapeMidInterface
     : hkpMidBase<hkpSimpleMeshShapeInternalInterface> {
   using Base = hkpMidBase<hkpSimpleMeshShapeInternalInterface>;
   using Base::Base;
+  std::unique_ptr<hkpSimpleMeshShapeWriter> writer;
 
   ArrayViewWithMode GetVerticesArray() const {
     if (this->rule.version != HK500 && this->rule.version != HK510) {
@@ -4647,6 +4731,15 @@ struct hkpSimpleMeshShapeMidInterface
     return (this->rule.version == HK500 || this->rule.version == HK510)
                ? ReadValue<uint8>(data, 64)
                : 0;
+  }
+
+  void Reflect(const IhkVirtualClass *other) override {
+    writer = std::make_unique<hkpSimpleMeshShapeWriter>(
+        this->rule, checked_deref_cast<const hkpSimpleMeshShape>(other));
+  }
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    writer->Save(wr, fixups);
   }
 };
 

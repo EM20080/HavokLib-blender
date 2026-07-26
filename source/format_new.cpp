@@ -164,29 +164,54 @@ ReadCompFunc ReadComp<CompileFourCC("FSTR")> =
 template <>
 ReadCompFunc ReadComp<CompileFourCC("FST1")> = ReadComp<CompileFourCC("FSTR")>;
 
-int32 ReadCompressedInt(BinReaderRef rd) {
+uint64 ReadCompressedInt(BinReaderRef rd) {
   uint8 firstInt;
-  int32 resultInt = 0;
-
   rd.Read(firstInt);
 
-  const bool flag1 = (firstInt & 0x80) == 0x80;
-  const bool flag2 = (firstInt & 0xC0) == 0xC0;
-  const bool flag3 = (firstInt & 0xE0) == 0xE0;
+  if (!(firstInt & 0x80)) {
+    return firstInt;
+  }
 
-  if (flag3) {
-    rd.Read(resultInt);
-    resultInt |= (firstInt & 0xf) << 4;
-  } else if (flag2) {
-    throw std::logic_error("Unhandled int compression : 0xC0!");
-  } else if (flag1) {
-    uint8 secondInt;
-    rd.Read(secondInt);
-    resultInt = secondInt | ((static_cast<int32>(firstInt) & 0xf) << 8);
-  } else
-    resultInt = firstInt;
+  uint32 numBytes;
+  uint64 result;
+  if (firstInt < 0xc0) {
+    numBytes = 2;
+    result = firstInt & 0x3f;
+  } else if (firstInt < 0xe0) {
+    numBytes = 3;
+    result = firstInt & 0x1f;
+  } else if (firstInt < 0xe8) {
+    numBytes = 4;
+    result = firstInt & 7;
+  } else if (firstInt < 0xf0) {
+    numBytes = 5;
+    result = firstInt & 7;
+  } else if (firstInt < 0xf8) {
+    numBytes = 8;
+    result = firstInt & 7;
+  } else if (firstInt == 0xf8) {
+    numBytes = 6;
+    result = 0;
+  } else if (firstInt == 0xf9) {
+    numBytes = 9;
+    result = 0;
+  } else {
+    throw std::runtime_error("Invalid packed integer");
+  }
 
-  return resultInt;
+  for (uint32 i = 1; i < numBytes; i++) {
+    uint8 value;
+    rd.Read(value);
+    result = (result << 8) | value;
+  }
+  return result;
+}
+
+ClassName *ReadClassIndex(hkCompendiumData *root, uint64 index) {
+  if (!index || index > root->weldedClassNames.size()) {
+    return nullptr;
+  }
+  return &root->weldedClassNames[static_cast<size_t>(index - 1)];
 }
 
 template <>
@@ -197,24 +222,26 @@ ReadCompFunc ReadComp<CompileFourCC("TNAM")> = [](BinReaderRef rd,
   PtrGuard(root);
 
   const size_t savepos = rd.Tell();
-  const uint32 numClasses = ReadCompressedInt(rd) - 1;
+  const uint32 numClasses = static_cast<uint32>(ReadCompressedInt(rd) - 1);
 
   root->weldedClassNames.resize(numClasses);
 
   for (auto &c : root->weldedClassNames) {
-    const uint32 classNameIndex = ReadCompressedInt(rd);
+    const uint32 classNameIndex = static_cast<uint32>(ReadCompressedInt(rd));
     c.className = root->classNames[classNameIndex];
 
-    uint8 numTemplateArgs;
-    rd.Read(numTemplateArgs);
+    const uint32 numTemplateArgs =
+        static_cast<uint32>(ReadCompressedInt(rd));
     c.templateArguments.resize(numTemplateArgs);
 
     for (auto &t : c.templateArguments) {
-      uint32 argNameIndex = ReadCompressedInt(rd);
+      uint32 argNameIndex = static_cast<uint32>(ReadCompressedInt(rd));
       t.argName = root->classNames[argNameIndex];
 
-      argNameIndex = ReadCompressedInt(rd);
-      t.argType = &root->weldedClassNames[argNameIndex - 1];
+      t.value = ReadCompressedInt(rd);
+      if (!t.argName.empty() && t.argName[0] == 't') {
+        t.argType = ReadClassIndex(root, t.value);
+      }
     }
   }
 
@@ -228,6 +255,82 @@ ReadCompFunc ReadComp<CompileFourCC("TNAM")> = [](BinReaderRef rd,
 
   rd.Skip(diff);
 };
+
+template <>
+ReadCompFunc ReadComp<CompileFourCC("TBOD")> =
+    [](BinReaderRef rd, hkChunk *holder, hkCompendiumData *root) {
+      PtrGuard(holder);
+      PtrGuard(root);
+
+      const size_t endPos = rd.Tell() + holder->Size();
+      while (rd.Tell() < endPos) {
+        const size_t recordPos = rd.Tell();
+        uint8 first;
+        rd.Read(first);
+        if (!first) {
+          rd.Seek(endPos);
+          break;
+        }
+        rd.Seek(recordPos);
+
+        ClassName *type = ReadClassIndex(root, ReadCompressedInt(rd));
+        if (!type) {
+          throw std::runtime_error("Invalid tagfile type body index");
+        }
+
+        type->parent = ReadClassIndex(root, ReadCompressedInt(rd));
+        type->optionals = static_cast<uint32>(ReadCompressedInt(rd));
+        if (type->optionals & 1) {
+          type->format = static_cast<uint32>(ReadCompressedInt(rd));
+        }
+        if (type->optionals & 2) {
+          type->subType = ReadClassIndex(root, ReadCompressedInt(rd));
+        }
+        if (type->optionals & 4) {
+          type->version = static_cast<uint32>(ReadCompressedInt(rd));
+        }
+        if (type->optionals & 8) {
+          type->byteSize = static_cast<uint32>(ReadCompressedInt(rd));
+          type->alignment = static_cast<uint32>(ReadCompressedInt(rd)) & 0xfff;
+        }
+        if (type->optionals & 0x10) {
+          type->flags = static_cast<uint32>(ReadCompressedInt(rd));
+        }
+        if (type->optionals & 0x20) {
+          const uint32 counts = static_cast<uint32>(ReadCompressedInt(rd));
+          type->members.resize(counts & 0xffff);
+          for (auto &member : type->members) {
+            const uint32 name = static_cast<uint32>(ReadCompressedInt(rd));
+            if (name >= root->memberNames.size()) {
+              throw std::runtime_error("Invalid tagfile member name index");
+            }
+            member.name = root->memberNames[name];
+            member.flags = static_cast<uint32>(ReadCompressedInt(rd));
+            if (member.flags & 0x80) {
+              ReadCompressedInt(rd);
+              member.flags &= ~0x80u;
+            }
+            member.offset = static_cast<uint32>(ReadCompressedInt(rd));
+            member.type = ReadClassIndex(root, ReadCompressedInt(rd));
+          }
+        }
+        if (type->optionals & 0x40) {
+          const uint32 count = static_cast<uint32>(ReadCompressedInt(rd));
+          type->interfaces.resize(count);
+          for (auto &interface : type->interfaces) {
+            interface.type = ReadClassIndex(root, ReadCompressedInt(rd));
+            interface.offset = static_cast<uint32>(ReadCompressedInt(rd));
+          }
+        }
+        if (type->optionals & 0x80) {
+          type->attributeString = static_cast<uint32>(ReadCompressedInt(rd));
+        }
+      }
+    };
+
+template <>
+ReadCompFunc ReadComp<CompileFourCC("TBDY")> =
+    ReadComp<CompileFourCC("TBOD")>;
 
 template <>
 ReadCompFunc ReadComp<CompileFourCC("TNA1")> = ReadComp<CompileFourCC("TNAM")>;
@@ -339,6 +442,8 @@ ReadFunc Read<CompileFourCC("PTCH")> =
           cls->className = clName;
           cls->AddHash(clName);
           cls->header = root;
+          root->classBindings.push_back(
+              {clsn->GetPointer(), &cData.weldedClassNames[clsID]});
           root->virtualClasses.emplace_back(clsn);
           cls->Process();
         }
@@ -401,8 +506,8 @@ static const std::map<uint32, ReadCompFunc> hkCompChunkRegistry = {
     makeCompSkip<CompileFourCC("TPTR")>(), //
     makeCompSkip<CompileFourCC("TPAD")>(), //
     makeCompSkip<CompileFourCC("THSH")>(), //
-    makeCompSkip<CompileFourCC("TBOD")>(), // TODO
-    makeCompSkip<CompileFourCC("TBDY")>(), // TODO
+    makeComp<CompileFourCC("TBOD")>(),     //
+    makeComp<CompileFourCC("TBDY")>(),     //
     makeComp<CompileFourCC("TYPE")>(),     //
     makeComp<CompileFourCC("TSTR")>(),     //
     makeComp<CompileFourCC("FSTR")>(),     //
@@ -459,8 +564,13 @@ void hkxNewHeader::DumpClassNames(std::ostream &str) {
       str << '<';
 
       for (auto &t : cl.templateArguments) {
-        str << "typename " << t.argName << " = " << t.argType->className
-            << ", ";
+        str << "typename " << t.argName << " = ";
+        if (t.argType) {
+          str << t.argType->className;
+        } else {
+          str << t.value;
+        }
+        str << ", ";
       }
 
       str.seekp(-2, std::ios_base::cur);
@@ -469,6 +579,15 @@ void hkxNewHeader::DumpClassNames(std::ostream &str) {
 
     str << '\n';
   }
+}
+
+const ClassName *hkxNewHeader::GetClassType(const void *object) const {
+  for (const auto &binding : classBindings) {
+    if (binding.object == object) {
+      return binding.type;
+    }
+  }
+  return nullptr;
 }
 
 void hkCompendium::Load(BinReaderRef rd) {

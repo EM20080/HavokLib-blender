@@ -522,6 +522,10 @@ size_t MoppCodeBuildTypeOffset(hkToolset) { return 44; }
 
 size_t StorageMeshArrayOffset(hkToolset version) {
   switch (version) {
+  case HK2017:
+  case HK2018:
+  case HK2019:
+    return 336;
   case HK2010_2:
   case HK2012_2:
     return 240;
@@ -533,6 +537,10 @@ size_t StorageMeshArrayOffset(hkToolset version) {
 
 size_t StorageShapeArrayOffset(hkToolset version) {
   switch (version) {
+  case HK2017:
+  case HK2018:
+  case HK2019:
+    return 352;
   case HK2010_2:
   case HK2012_2:
     return 252;
@@ -643,6 +651,10 @@ size_t ShapeRecordChildShapesOffset(hkToolset version) {
 
 size_t MeshSubpartIndices8Offset(hkToolset version) {
   switch (version) {
+  case HK2017:
+  case HK2018:
+  case HK2019:
+    return 40;
   case HK2010_2:
   case HK2012_2:
     return 20;
@@ -665,6 +677,10 @@ size_t MeshSubpartStorageFixedSize(hkToolset version) {
 
 size_t MeshSubpartIndices16Offset(hkToolset version) {
   switch (version) {
+  case HK2017:
+  case HK2018:
+  case HK2019:
+    return 56;
   case HK2010_2:
   case HK2012_2:
     return 32;
@@ -676,6 +692,10 @@ size_t MeshSubpartIndices16Offset(hkToolset version) {
 
 size_t MeshSubpartIndices32Offset(hkToolset version) {
   switch (version) {
+  case HK2017:
+  case HK2018:
+  case HK2019:
+    return 72;
   case HK2010_2:
   case HK2012_2:
     return 44;
@@ -2407,7 +2427,26 @@ template <class C> struct hkpMidBase : C, hkpSerializedCollisionBytes {
     return this->rule.version != HK2014_2 && RequiresEndianSwap(this->header);
   }
 
+  const ClassName *TagType() const {
+    const auto *tag = dynamic_cast<const hkxNewHeader *>(this->header);
+    return tag ? tag->GetClassType(data) : nullptr;
+  }
+
+  const ClassMember *TagMember(std::string_view name) const {
+    const ClassName *type = TagType();
+    return type ? type->FindMember(name) : nullptr;
+  }
+
+  size_t TagMemberOffset(std::string_view name, size_t fallback) const {
+    const ClassMember *member = TagMember(name);
+    return member ? member->offset : fallback;
+  }
+
   uint32 GetShapeUserData() const {
+    if (const ClassMember *member = TagMember("userData")) {
+      return ReadValue<uint32>(data, member->offset,
+                               this->DataNeedsEndianSwap());
+    }
     if (this->rule.version == HK330B2) {
       return ReadValue<uint32>(data, 8, this->DataNeedsEndianSwap());
     }
@@ -3937,9 +3976,43 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
 
   static constexpr uint32 kMaxProperties = 1 << 16;
 
+  const ClassMember *NestedMember(std::string_view owner,
+                                  std::string_view name) const {
+    const ClassMember *member = this->TagMember(owner);
+    const ClassName *type = member ? member->type : nullptr;
+    return type ? type->FindMember(name) : nullptr;
+  }
+
+  size_t NestedMemberOffset(std::string_view owner, std::string_view name,
+                            size_t fallback) const {
+    const ClassMember *member = NestedMember(owner, name);
+    return member ? member->offset : fallback;
+  }
+
+  size_t NestedMemberOffset(std::string_view owner, std::string_view nested,
+                            std::string_view name, size_t fallback) const {
+    const ClassMember *nestedMember = NestedMember(owner, nested);
+    const ClassName *type = nestedMember ? nestedMember->type : nullptr;
+    const ClassMember *member = type ? type->FindMember(name) : nullptr;
+    return member ? member->offset : fallback;
+  }
+
+  size_t CollidableOffset() const {
+    return this->TagMemberOffset("collidable",
+                                 RigidBodyCollidableOffset(this->rule.version));
+  }
+
+  size_t MaterialOffset() const {
+    return this->TagMemberOffset(
+        "material", RigidBodyMaterialOffset(this->rule.version, this->rule.x64));
+  }
+
   ArrayViewWithMode GetPropertiesArray() const {
     ArrayViewWithMode properties = ReadArrayWithFallback(
-        data, RigidBodyPropertiesOffset(this->rule.version, this->rule.x64),
+        data,
+        this->TagMemberOffset(
+            "properties",
+            RigidBodyPropertiesOffset(this->rule.version, this->rule.x64)),
         this->rule.x64, this->DataNeedsEndianSwap(), kMaxProperties);
     if (!ArrayViewCoveredByHeader(properties, sizeof(hkpRigidBodyProperty),
                              this->header)) {
@@ -3949,12 +4022,18 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   size_t MotionOffset() const {
-    return RigidBodyMotionOffset(this->rule.version);
+    return this->TagMemberOffset("motion",
+                                 RigidBodyMotionOffset(this->rule.version));
   }
 
-  size_t MotionStateOffset() const { return MotionOffset() + 16; }
+  size_t MotionStateOffset() const {
+    return MotionOffset() + NestedMemberOffset("motion", "motionState", 16);
+  }
 
-  size_t SweptTransformOffset() const { return MotionStateOffset() + 64; }
+  size_t SweptTransformOffset() const {
+    return MotionStateOffset() +
+           NestedMemberOffset("motion", "motionState", "sweptTransform", 64);
+  }
 
   const char *Hk330Motion() const {
     if (this->rule.version != HK330B2) {
@@ -3969,7 +4048,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
 
   std::string_view GetName() const override {
     const char *name =
-        ReadPointer<char>(data, RigidBodyNameOffset(this->rule.version), this->rule.x64);
+        ReadPointer<char>(data,
+                          this->TagMemberOffset(
+                              "name", RigidBodyNameOffset(this->rule.version)),
+                          this->rule.x64);
     if (!PointerCoveredByHeader(this->header, name, 1)) {
       return {};
     }
@@ -3978,21 +4060,37 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   uint32 GetShapeKey() const override {
-    const size_t offset = RigidBodyCollidableOffset(this->rule.version) +
-                          PointerSize(this->rule.x64);
+    const size_t offset =
+        CollidableOffset() +
+        NestedMemberOffset("collidable", "shapeKey",
+                           PointerSize(this->rule.x64));
     return ReadValue<uint32>(data, offset, this->DataNeedsEndianSwap());
   }
 
   uint32 GetCollisionFilterInfo() const override {
-    const size_t offset = BroadPhaseHandleOffset(this->rule.version,
-                                                  this->rule.x64) + 8;
+    const size_t offset =
+        CollidableOffset() +
+        NestedMemberOffset("collidable", "broadPhaseHandle",
+                           BroadPhaseHandleOffset(this->rule.version,
+                                                  this->rule.x64) -
+                               RigidBodyCollidableOffset(this->rule.version)) +
+        NestedMemberOffset("collidable", "broadPhaseHandle",
+                           "collisionFilterInfo", 8);
     return ReadValue<uint32>(data, offset, this->DataNeedsEndianSwap());
   }
 
   uint8 GetObjectQualityType() const override {
     return RuntimeQualityType(this->rule.version, data,
-                              BroadPhaseHandleOffset(this->rule.version,
-                                                     this->rule.x64) + 6,
+                              CollidableOffset() +
+                                  NestedMemberOffset(
+                                      "collidable", "broadPhaseHandle",
+                                      BroadPhaseHandleOffset(
+                                          this->rule.version, this->rule.x64) -
+                                          RigidBodyCollidableOffset(
+                                              this->rule.version)) +
+                                  NestedMemberOffset("collidable",
+                                                     "broadPhaseHandle",
+                                                     "objectQualityType", 6),
                               this->DataNeedsEndianSwap());
   }
 
@@ -4000,8 +4098,8 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     if (this->rule.version == HK330B2) {
       return 5;
     }
-    const size_t motionOffset = RigidBodyMotionOffset(this->rule.version);
-    return ReadValue<uint8>(data, motionOffset + 8);
+    return ReadValue<uint8>(
+        data, MotionOffset() + NestedMemberOffset("motion", "type", 8));
   }
 
   Vector4A16 GetCenterOfMassLocal() const override {
@@ -4039,7 +4137,9 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
           ReadValue<float>(motion, 196, this->DataNeedsEndianSwap());
       return Vector4A16(inertiaInv, inertiaInv, inertiaInv, massInv);
     }
-    return ReadValue<Vector4A16>(data, MotionOffset() + 192,
+    return ReadValue<Vector4A16>(
+        data,
+        MotionOffset() + NestedMemberOffset("motion", "inertiaAndMassInv", 192),
                                  this->DataNeedsEndianSwap());
   }
 
@@ -4048,7 +4148,8 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
       return ReadValue<Vector4A16>(motion, 208,
                                    this->DataNeedsEndianSwap());
     }
-    return ReadValue<Vector4A16>(data, MotionOffset() + 208,
+    return ReadValue<Vector4A16>(
+        data, MotionOffset() + NestedMemberOffset("motion", "linearVelocity", 208),
                                  this->DataNeedsEndianSwap());
   }
 
@@ -4057,7 +4158,9 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
       return ReadValue<Vector4A16>(motion, 224,
                                    this->DataNeedsEndianSwap());
     }
-    return ReadValue<Vector4A16>(data, MotionOffset() + 224,
+    return ReadValue<Vector4A16>(
+        data,
+        MotionOffset() + NestedMemberOffset("motion", "angularVelocity", 224),
                                  this->DataNeedsEndianSwap());
   }
 
@@ -4065,7 +4168,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     if (const char *motion = Hk330Motion()) {
       return ReadValue<float>(motion, 176, this->DataNeedsEndianSwap());
     }
-    return ReadValue<float>(data, MotionStateOffset() + 160,
+    return ReadValue<float>(
+        data, MotionStateOffset() +
+                  NestedMemberOffset("motion", "motionState", "objectRadius",
+                                     160),
                             this->DataNeedsEndianSwap());
   }
 
@@ -4078,7 +4184,9 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
                               this->DataNeedsEndianSwap());
     }
 
-    return ReadHalfFloat(MotionStateOffset() + 164);
+    return ReadHalfFloat(
+        MotionStateOffset() +
+        NestedMemberOffset("motion", "motionState", "linearDamping", 164));
   }
 
   float GetAngularDamping() const override {
@@ -4090,7 +4198,9 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
                               this->DataNeedsEndianSwap());
     }
 
-    return ReadHalfFloat(MotionStateOffset() + 166);
+    return ReadHalfFloat(
+        MotionStateOffset() +
+        NestedMemberOffset("motion", "motionState", "angularDamping", 166));
   }
 
   float GetTimeFactor() const override {
@@ -4099,7 +4209,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     }
     return this->rule.version == HK510 || this->rule.version == HK550
                ? 1.0f
-               : ReadHalfFloat(MotionStateOffset() + 168);
+               : ReadHalfFloat(
+                     MotionStateOffset() +
+                     NestedMemberOffset("motion", "motionState", "timeFactor",
+                                        168));
   }
 
   float GetGravityFactor() const override {
@@ -4108,7 +4221,8 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
     }
     return this->rule.version == HK510 || this->rule.version == HK550
                ? 1.0f
-               : ReadHalfFloat(MotionOffset() + 286);
+               : ReadHalfFloat(MotionOffset() +
+                               NestedMemberOffset("motion", "gravityFactor", 286));
   }
 
   uint8 GetDeactivationIntegrateCounter() const override {
@@ -4116,7 +4230,9 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
       return static_cast<uint8>(ReadValue<uint16>(
           motion, 190, this->DataNeedsEndianSwap()));
     }
-    return ReadValue<uint8>(data, MotionOffset() + 9);
+    return ReadValue<uint8>(
+        data, MotionOffset() +
+                  NestedMemberOffset("motion", "deactivationIntegrateCounter", 9));
   }
 
   uint16 GetDeactivationNumInactiveFrames(size_t id) const override {
@@ -4127,7 +4243,11 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
       return 0;
     }
 
-    return ReadValue<uint16>(data, MotionOffset() + 10 + (id * sizeof(uint16)),
+    return ReadValue<uint16>(
+        data,
+        MotionOffset() +
+            NestedMemberOffset("motion", "deactivationNumInactiveFrames", 10) +
+            (id * sizeof(uint16)),
                              this->DataNeedsEndianSwap());
   }
 
@@ -4136,12 +4256,13 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
       return static_cast<uint8>(ReadValue<float>(
           motion, 180, this->DataNeedsEndianSwap()));
     }
-    return ReadValue<uint8>(data,
-                            MotionStateOffset() +
-                                (this->rule.version == HK510 ||
-                                         this->rule.version == HK550
-                                     ? 172
-                                     : 170));
+    return ReadValue<uint8>(
+        data, MotionStateOffset() +
+                  NestedMemberOffset(
+                      "motion", "motionState", "maxLinearVelocity",
+                      this->rule.version == HK510 || this->rule.version == HK550
+                          ? 172
+                          : 170));
   }
 
   uint8 GetMaxAngularVelocity() const override {
@@ -4149,12 +4270,13 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
       return static_cast<uint8>(ReadValue<float>(
           motion, 184, this->DataNeedsEndianSwap()));
     }
-    return ReadValue<uint8>(data,
-                            MotionStateOffset() +
-                                (this->rule.version == HK510 ||
-                                         this->rule.version == HK550
-                                     ? 173
-                                     : 171));
+    return ReadValue<uint8>(
+        data, MotionStateOffset() +
+                  NestedMemberOffset(
+                      "motion", "motionState", "maxAngularVelocity",
+                      this->rule.version == HK510 || this->rule.version == HK550
+                          ? 173
+                          : 171));
   }
 
   uint8 GetDeactivationClass() const override {
@@ -4162,39 +4284,54 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
       return static_cast<uint8>(ReadValue<uint16>(
           motion, 188, this->DataNeedsEndianSwap()));
     }
-    return ReadValue<uint8>(data,
-                            MotionStateOffset() +
-                                (this->rule.version == HK510 ||
-                                         this->rule.version == HK550
-                                     ? 174
-                                     : 172));
+    return ReadValue<uint8>(
+        data, MotionStateOffset() +
+                  NestedMemberOffset(
+                      "motion", "motionState", "deactivationClass",
+                      this->rule.version == HK510 || this->rule.version == HK550
+                          ? 174
+                          : 172));
   }
 
   uint16 GetSavedQualityTypeIndex() const override {
     if (this->rule.version == HK330B2) {
       return 0;
     }
-    return ReadValue<uint16>(data, MotionOffset() + 284, this->DataNeedsEndianSwap());
+    return ReadValue<uint16>(
+        data,
+        MotionOffset() +
+            NestedMemberOffset("motion", "savedQualityTypeIndex", 284),
+        this->DataNeedsEndianSwap());
   }
 
   uint8 GetMaterialResponseType() const override {
     return ReadValue<uint8>(
-        data, RigidBodyMaterialOffset(this->rule.version, this->rule.x64));
+        data, MaterialOffset() +
+                  NestedMemberOffset("material", "responseType", 0));
   }
 
   float GetMaterialFriction() const override {
     return ReadValue<float>(
-        data, RigidBodyMaterialOffset(this->rule.version, this->rule.x64) + 4,
+        data,
+        MaterialOffset() + NestedMemberOffset("material", "friction", 4),
         this->DataNeedsEndianSwap());
   }
 
   float GetMaterialRestitution() const override {
     return ReadValue<float>(
-        data, RigidBodyMaterialOffset(this->rule.version, this->rule.x64) + 8,
+        data,
+        MaterialOffset() + NestedMemberOffset("material", "restitution", 8),
         this->DataNeedsEndianSwap());
   }
 
   float GetAllowedPenetrationDepth() const override {
+    if (this->TagType()) {
+      return ReadValue<float>(
+          data,
+          CollidableOffset() +
+              NestedMemberOffset("collidable", "allowedPenetrationDepth", 76),
+          this->DataNeedsEndianSwap());
+    }
     if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
       return ReadValue<float>(data, 0x5c, this->DataNeedsEndianSwap());
     }
@@ -4202,6 +4339,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   float GetDamageMultiplier() const override {
+    if (const ClassMember *member = this->TagMember("damageMultiplier")) {
+      return ReadValue<float>(data, member->offset,
+                              this->DataNeedsEndianSwap());
+    }
     if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
       return ReadValue<float>(data, 0x98, this->DataNeedsEndianSwap());
     }
@@ -4209,6 +4350,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   uint16 GetStorageIndex() const override {
+    if (const ClassMember *member = this->TagMember("storageIndex")) {
+      return ReadValue<uint16>(data, member->offset,
+                               this->DataNeedsEndianSwap());
+    }
     if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
       return ReadValue<uint16>(data, 0xa4, this->DataNeedsEndianSwap());
     }
@@ -4216,6 +4361,11 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   uint16 GetContactPointCallbackDelay() const override {
+    if (const ClassMember *member =
+            this->TagMember("contactPointCallbackDelay")) {
+      return ReadValue<uint16>(data, member->offset,
+                               this->DataNeedsEndianSwap());
+    }
     if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
       return ReadValue<uint16>(data, 0xa6, this->DataNeedsEndianSwap());
     }
@@ -4223,6 +4373,10 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   uint32 GetUid() const override {
+    if (const ClassMember *member = this->TagMember("uid")) {
+      return ReadValue<uint32>(data, member->offset,
+                               this->DataNeedsEndianSwap());
+    }
     if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
       return ReadValue<uint32>(data, 0xd0, this->DataNeedsEndianSwap());
     }
@@ -4230,6 +4384,12 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   uint8 GetSpuCollisionCallbackEventFilter() const override {
+    if (this->TagMember("spuCollisionCallback")) {
+      return ReadValue<uint8>(
+          data, this->TagMemberOffset("spuCollisionCallback", 0) +
+                    NestedMemberOffset("spuCollisionCallback", "eventFilter",
+                                       10));
+    }
     if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
       return ReadValue<uint8>(data, 0xda);
     }
@@ -4237,6 +4397,12 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
   }
 
   uint8 GetSpuCollisionCallbackUserFilter() const override {
+    if (this->TagMember("spuCollisionCallback")) {
+      return ReadValue<uint8>(
+          data, this->TagMemberOffset("spuCollisionCallback", 0) +
+                    NestedMemberOffset("spuCollisionCallback", "userFilter",
+                                       11));
+    }
     if (this->rule.version == HK2014 || this->rule.version == HK2014_2) {
       return ReadValue<uint8>(data, 0xdb);
     }
@@ -4287,7 +4453,9 @@ struct hkpRigidBodyMidInterface : hkpMidBase<hkpRigidBodyInternalInterface> {
 
   const hkpShape *GetShape() const override {
     const void *shapePtr = ReadPointer<char>(
-        data, RigidBodyCollidableOffset(this->rule.version), this->rule.x64);
+        data,
+        CollidableOffset() + NestedMemberOffset("collidable", "shape", 0),
+        this->rule.x64);
     if (!PointerCoveredByHeader(this->header, shapePtr, 1)) {
       return nullptr;
     }
@@ -4630,7 +4798,10 @@ struct hkpMoppBvTreeShapeMidInterface
 
   const hkpMoppCode *GetCode() const override {
     const void *codePtr = ReadPointer<char>(
-        data, MoppCodePointerOffset(this->rule.version), this->rule.x64);
+        data,
+        this->TagMemberOffset("code",
+                              MoppCodePointerOffset(this->rule.version)),
+        this->rule.x64);
     if (!PointerCoveredByHeader(this->header, codePtr, 1)) {
       return nullptr;
     }
@@ -4638,7 +4809,13 @@ struct hkpMoppBvTreeShapeMidInterface
   }
 
   const hkpShape *GetChildShape() const override {
-    const size_t childPointerOffset = 48 + (this->rule.x64 ? 8 : 4);
+    const ClassMember *child = this->TagMember("child");
+    const ClassName *childType = child ? child->type : nullptr;
+    const ClassMember *childShape =
+        childType ? childType->FindMember("childShape") : nullptr;
+    const size_t childPointerOffset =
+        child ? child->offset + (childShape ? childShape->offset : 0)
+              : 48 + (this->rule.x64 ? 8 : 4);
     const void *shapePtr = ReadPointer<char>(data, childPointerOffset, this->rule.x64);
     if (!PointerCoveredByHeader(this->header, shapePtr, 1)) {
       return nullptr;
@@ -4751,11 +4928,27 @@ struct hkpStaticCompoundShapeMidInterface
 
   static constexpr uint32 kMaxInstances = 1 << 16;
 
+  const ClassName *InstanceType() const {
+    const ClassMember *instances = this->TagMember("instances");
+    return instances && instances->type ? instances->type->subType : nullptr;
+  }
+
+  size_t InstanceOffset(std::string_view name, size_t fallback) const {
+    const ClassName *type = InstanceType();
+    const ClassMember *member = type ? type->FindMember(name) : nullptr;
+    return member ? member->offset : fallback;
+  }
+
+  size_t InstanceSize() const {
+    const ClassName *type = InstanceType();
+    return type && type->byteSize ? type->byteSize : kStaticCompoundInstanceSize;
+  }
+
   ArrayViewWithMode GetInstancesArray() const {
     ArrayViewWithMode instances = ReadArrayWithFallback(
-        data, 32, this->rule.x64, this->DataNeedsEndianSwap(), kMaxInstances);
-    if (!ArrayViewCoveredByHeader(instances, kStaticCompoundInstanceSize,
-                             this->header)) {
+        data, this->TagMemberOffset("instances", 32), this->rule.x64,
+        this->DataNeedsEndianSwap(), kMaxInstances);
+    if (!ArrayViewCoveredByHeader(instances, InstanceSize(), this->header)) {
       return {};
     }
     return instances;
@@ -4774,21 +4967,28 @@ struct hkpStaticCompoundShapeMidInterface
       return instance;
     }
 
-    const char *record =
-        instances.view.data + (id * kStaticCompoundInstanceSize);
+    const char *record = instances.view.data + (id * InstanceSize());
     instance.translation =
-        ReadValue<Vector4A16>(record, 0, instances.swapEndian);
+        ReadValue<Vector4A16>(record, InstanceOffset("transform", 0),
+                              instances.swapEndian);
     instance.translation._arr[3] = 0.0f;
     instance.rotation =
-        ReadValue<Vector4A16>(record, 16, instances.swapEndian);
-    instance.scale = ReadValue<Vector4A16>(record, 32, instances.swapEndian);
+        ReadValue<Vector4A16>(record, InstanceOffset("transform", 0) + 16,
+                              instances.swapEndian);
+    instance.scale =
+        ReadValue<Vector4A16>(record, InstanceOffset("transform", 0) + 32,
+                              instances.swapEndian);
     instance.scale._arr[3] = 0.0f;
-    instance.filterInfo = ReadValue<uint32>(record, 52, instances.swapEndian);
-    instance.childFilterInfoMask =
-        ReadValue<uint32>(record, 56, instances.swapEndian);
-    instance.userData = ReadValue<uint32>(record, 60, instances.swapEndian);
+    instance.filterInfo = ReadValue<uint32>(
+        record, InstanceOffset("filterInfo", 52), instances.swapEndian);
+    instance.childFilterInfoMask = ReadValue<uint32>(
+        record, InstanceOffset("childFilterInfoMask", 56),
+        instances.swapEndian);
+    instance.userData = ReadValue<uint32>(
+        record, InstanceOffset("userData", 60), instances.swapEndian);
 
-    const void *shapePtr = ReadPointer<char>(record, 48, instances.x64);
+    const void *shapePtr = ReadPointer<char>(
+        record, InstanceOffset("shape", 48), instances.x64);
     if (PointerCoveredByHeader(this->header, shapePtr, 1)) {
       instance.shape =
           safe_deref_cast<const hkpShape>(this->header->GetClass(shapePtr));
@@ -4819,6 +5019,42 @@ struct hkpBvCompressedMeshShapeMidInterface
   static constexpr uint32 kMaxBvcPrimitives = 1 << 23;
   static constexpr uint32 kMaxBvcVertices = 1 << 24;
 
+  const ClassName *TreeType() const {
+    const ClassMember *tree = this->TagMember("tree");
+    return tree ? tree->type : nullptr;
+  }
+
+  const ClassMember *TreeMember(std::string_view name) const {
+    const ClassName *tree = TreeType();
+    return tree ? tree->FindMember(name) : nullptr;
+  }
+
+  size_t TreeOffset() const {
+    return this->TagMemberOffset("tree", kBvcTreeOffset);
+  }
+
+  size_t TreeMemberOffset(std::string_view name, size_t fallback) const {
+    const ClassMember *member = TreeMember(name);
+    return member ? member->offset : fallback;
+  }
+
+  size_t ArrayElementSize(const ClassMember *member, size_t fallback) const {
+    const ClassName *array = member ? member->type : nullptr;
+    const ClassName *element = array ? array->subType : nullptr;
+    return element && element->byteSize ? element->byteSize : fallback;
+  }
+
+  const ClassName *SectionType() const {
+    const ClassMember *sections = TreeMember("sections");
+    return sections && sections->type ? sections->type->subType : nullptr;
+  }
+
+  size_t SectionOffset(std::string_view name, size_t fallback) const {
+    const ClassName *section = SectionType();
+    const ClassMember *member = section ? section->FindMember(name) : nullptr;
+    return member ? member->offset : fallback;
+  }
+
   ArrayViewWithMode GetPaletteArray(size_t offset) const {
     ArrayViewWithMode values = ReadArrayWithFallback(
         data, offset, this->rule.x64, this->DataNeedsEndianSwap(), 256);
@@ -4829,20 +5065,25 @@ struct hkpBvCompressedMeshShapeMidInterface
   }
 
   ArrayViewWithMode GetSectionsArray() const {
+    const ClassMember *member = TreeMember("sections");
     ArrayViewWithMode values = ReadArrayWithFallback(
-        data, kBvcTreeOffset + 60, this->rule.x64, this->DataNeedsEndianSwap(),
-        kMaxBvcSections);
-    if (!ArrayViewCoveredByHeader(values, kBvcSectionSize, this->header)) {
+        data, TreeOffset() + TreeMemberOffset("sections", 60), this->rule.x64,
+        this->DataNeedsEndianSwap(), kMaxBvcSections);
+    if (!ArrayViewCoveredByHeader(values,
+                                  ArrayElementSize(member, kBvcSectionSize),
+                                  this->header)) {
       return {};
     }
     return values;
   }
 
   ArrayViewWithMode GetPrimitivesArray() const {
+    const ClassMember *member = TreeMember("primitives");
     ArrayViewWithMode values = ReadArrayWithFallback(
-        data, kBvcTreeOffset + 72, this->rule.x64, this->DataNeedsEndianSwap(),
-        kMaxBvcPrimitives);
-    if (!ArrayViewCoveredByHeader(values, kBvcPrimitiveSize, this->header)) {
+        data, TreeOffset() + TreeMemberOffset("primitives", 72), this->rule.x64,
+        this->DataNeedsEndianSwap(), kMaxBvcPrimitives);
+    if (!ArrayViewCoveredByHeader(
+            values, ArrayElementSize(member, kBvcPrimitiveSize), this->header)) {
       return {};
     }
     return values;
@@ -4850,7 +5091,8 @@ struct hkpBvCompressedMeshShapeMidInterface
 
   ArrayViewWithMode GetPackedVerticesArray() const {
     ArrayViewWithMode values = ReadArrayWithFallback(
-        data, kBvcTreeOffset + 96, this->rule.x64, this->DataNeedsEndianSwap(),
+        data, TreeOffset() + TreeMemberOffset("packedVertices", 96),
+        this->rule.x64, this->DataNeedsEndianSwap(),
         kMaxBvcVertices);
     if (!ArrayViewCoveredByHeader(values, sizeof(uint32), this->header)) {
       return {};
@@ -4860,7 +5102,8 @@ struct hkpBvCompressedMeshShapeMidInterface
 
   ArrayViewWithMode GetSharedVerticesIndexArray() const {
     ArrayViewWithMode values = ReadArrayWithFallback(
-        data, kBvcTreeOffset + 84, this->rule.x64,
+        data, TreeOffset() + TreeMemberOffset("sharedVerticesIndex", 84),
+        this->rule.x64,
         this->DataNeedsEndianSwap(), kMaxBvcVertices);
     if (!ArrayViewCoveredByHeader(values, sizeof(uint16), this->header)) {
       return {};
@@ -4870,7 +5113,8 @@ struct hkpBvCompressedMeshShapeMidInterface
 
   ArrayViewWithMode GetSharedVerticesArray() const {
     ArrayViewWithMode values = ReadArrayWithFallback(
-        data, kBvcTreeOffset + 108, this->rule.x64,
+        data, TreeOffset() + TreeMemberOffset("sharedVertices", 108),
+        this->rule.x64,
         this->DataNeedsEndianSwap(), kMaxBvcVertices);
     if (!ArrayViewCoveredByHeader(values, sizeof(uint64), this->header)) {
       return {};
@@ -4879,10 +5123,13 @@ struct hkpBvCompressedMeshShapeMidInterface
   }
 
   ArrayViewWithMode GetDataRunsArray() const {
+    const ClassMember *member = TreeMember("primitiveDataRuns");
     ArrayViewWithMode values = ReadArrayWithFallback(
-        data, kBvcTreeOffset + 120, this->rule.x64,
+        data, TreeOffset() + TreeMemberOffset("primitiveDataRuns", 120),
+        this->rule.x64,
         this->DataNeedsEndianSwap(), kMaxBvcPrimitives);
-    if (!ArrayViewCoveredByHeader(values, kBvcDataRunSize, this->header)) {
+    if (!ArrayViewCoveredByHeader(
+            values, ArrayElementSize(member, kBvcDataRunSize), this->header)) {
       return {};
     }
     return values;
@@ -4905,8 +5152,8 @@ struct hkpBvCompressedMeshShapeMidInterface
 
     uint32 firstRun = 0;
     uint32 numRuns = 0;
-    const uint32 sectionRuns =
-        ReadValue<uint32>(section, 84, sectionSwapEndian);
+    const uint32 sectionRuns = ReadValue<uint32>(
+        section, SectionOffset("dataRuns", 84), sectionSwapEndian);
     firstRun = BvcFirst24_8(sectionRuns);
     numRuns = BvcCount24_8(sectionRuns);
     const uint32 nextRun = (std::min)(
@@ -4940,19 +5187,20 @@ struct hkpBvCompressedMeshShapeMidInterface
     const ArrayViewWithMode sharedVerticesIndex = GetSharedVerticesIndexArray();
     const ArrayViewWithMode sharedVertices = GetSharedVerticesArray();
     const ArrayViewWithMode dataRuns = GetDataRunsArray();
-    const ArrayViewWithMode filterPalette = GetPaletteArray(32);
-    const ArrayViewWithMode userPalette = GetPaletteArray(44);
+    const ArrayViewWithMode filterPalette =
+        GetPaletteArray(this->TagMemberOffset("collisionFilterInfoPalette", 32));
+    const ArrayViewWithMode userPalette =
+        GetPaletteArray(this->TagMemberOffset("userDataPalette", 44));
     if (!sections.view.data || !primitives.view.data || !packedVertices.view.data) {
       return;
     }
 
     float sharedParms[6]{};
-    const Vector4A16 domainMin =
-        ReadValue<Vector4A16>(data, kBvcTreeOffset + 16,
-                              this->DataNeedsEndianSwap());
-    const Vector4A16 domainMax =
-        ReadValue<Vector4A16>(data, kBvcTreeOffset + 32,
-                              this->DataNeedsEndianSwap());
+    const size_t domainOffset = TreeMemberOffset("domain", 16);
+    const Vector4A16 domainMin = ReadValue<Vector4A16>(
+        data, TreeOffset() + domainOffset, this->DataNeedsEndianSwap());
+    const Vector4A16 domainMax = ReadValue<Vector4A16>(
+        data, TreeOffset() + domainOffset + 16, this->DataNeedsEndianSwap());
     sharedParms[0] = domainMin._arr[0];
     sharedParms[1] = domainMin._arr[1];
     sharedParms[2] = domainMin._arr[2];
@@ -4971,22 +5219,32 @@ struct hkpBvCompressedMeshShapeMidInterface
     for (size_t sectionIndex = 0; sectionIndex < sections.view.count;
          sectionIndex++) {
       sectionVertexIndices[sectionIndex].fill(invalidVertex);
-      const char *section =
-          sections.view.data + sectionIndex * kBvcSectionSize;
+      const char *section = sections.view.data +
+                            sectionIndex *
+                                ArrayElementSize(TreeMember("sections"),
+                                                 kBvcSectionSize);
       const uint32 firstPacked =
-          ReadValue<uint32>(section, 72, sections.swapEndian);
+          ReadValue<uint32>(section, SectionOffset("firstPackedVertex", 72),
+                            sections.swapEndian);
       const uint32 sharedInfo =
-          ReadValue<uint32>(section, 76, sections.swapEndian);
+          ReadValue<uint32>(section, SectionOffset("sharedVertices", 76),
+                            sections.swapEndian);
       const uint32 firstShared = BvcFirst24_8(sharedInfo);
       const uint8 firstSharedLocal = BvcCount24_8(sharedInfo);
-      const uint8 numPacked = ReadValue<uint8>(section, 88, sections.swapEndian);
+      const uint8 numPacked = ReadValue<uint8>(
+          section, SectionOffset("numPackedVertices", 88),
+          sections.swapEndian);
       const uint8 numSharedIndices =
-          ReadValue<uint8>(section, 89, sections.swapEndian);
-      const uint8 page = ReadValue<uint8>(section, 92);
+          ReadValue<uint8>(section, SectionOffset("numSharedIndices", 89),
+                           sections.swapEndian);
+      const uint8 page =
+          ReadValue<uint8>(section, SectionOffset("page", 92));
       float codecParms[6]{};
       for (size_t i = 0; i < 6; i++) {
         codecParms[i] =
-            ReadValue<float>(section, 48 + i * sizeof(float), sections.swapEndian);
+            ReadValue<float>(section, SectionOffset("codecParms", 48) +
+                                          i * sizeof(float),
+                             sections.swapEndian);
       }
 
       for (uint32 i = 0; i < numPacked; i++) {
@@ -5036,10 +5294,13 @@ struct hkpBvCompressedMeshShapeMidInterface
 
     for (size_t sectionIndex = 0; sectionIndex < sections.view.count;
          sectionIndex++) {
-      const char *section =
-          sections.view.data + sectionIndex * kBvcSectionSize;
+      const char *section = sections.view.data +
+                            sectionIndex *
+                                ArrayElementSize(TreeMember("sections"),
+                                                 kBvcSectionSize);
       const uint32 sectionPrimitives =
-          ReadValue<uint32>(section, 80, sections.swapEndian);
+          ReadValue<uint32>(section, SectionOffset("primitives", 80),
+                            sections.swapEndian);
       const uint32 firstPrimitive = BvcFirst24_8(sectionPrimitives);
       const uint32 nextPrimitive = (std::min)(
           firstPrimitive + BvcCount24_8(sectionPrimitives),
@@ -5103,20 +5364,25 @@ struct hkpBvCompressedMeshShapeMidInterface
   }
 
   float GetConvexRadius() const override {
-    return ReadValue<float>(data, 24, this->DataNeedsEndianSwap());
+    return ReadValue<float>(
+        data, this->TagMemberOffset("convexRadius", 24),
+        this->DataNeedsEndianSwap());
   }
 
   uint8 GetWeldingType() const override {
-    return ReadValue<uint8>(data, 28, this->DataNeedsEndianSwap());
+    return ReadValue<uint8>(data, this->TagMemberOffset("weldingType", 28),
+                            this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetBvcAabbMin() const override {
-    return ReadValue<Vector4A16>(data, kBvcTreeOffset + 16,
+    return ReadValue<Vector4A16>(data, TreeOffset() +
+                                           TreeMemberOffset("domain", 16),
                                  this->DataNeedsEndianSwap());
   }
 
   Vector4A16 GetBvcAabbMax() const override {
-    return ReadValue<Vector4A16>(data, kBvcTreeOffset + 32,
+    return ReadValue<Vector4A16>(data, TreeOffset() +
+                                           TreeMemberOffset("domain", 16) + 16,
                                  this->DataNeedsEndianSwap());
   }
 
@@ -5142,7 +5408,8 @@ struct hkpBvCompressedMeshShapeMidInterface
   }
 
   size_t GetNumBvcPrimitiveKeys() const override {
-    return ReadValue<uint32>(data, kBvcTreeOffset + 48,
+    return ReadValue<uint32>(data, TreeOffset() +
+                                       TreeMemberOffset("numPrimitiveKeys", 48),
                              this->DataNeedsEndianSwap());
   }
 
@@ -5341,7 +5608,8 @@ struct hkpStorageExtendedMeshShapeMeshSubpartStorageMidInterface
 
   ArrayViewWithMode GetVerticesArray() const {
     ArrayViewWithMode vertices = ReadArrayWithFallback(
-        data, 8, this->rule.x64, this->DataNeedsEndianSwap(), kMaxVertices);
+        data, this->rule.version >= HK2017 ? 24 : 8, this->rule.x64,
+        this->DataNeedsEndianSwap(), kMaxVertices);
     if (!ArrayViewCoveredByHeader(vertices, sizeof(Vector4A16), this->header)) {
       return {};
     }
@@ -5757,18 +6025,22 @@ struct hkpBoxShapeMidInterface : hkpMidBase<hkpBoxShapeInternalInterface> {
     if (this->rule.version == HK330B2) {
       return 3;
     }
-    if (HasHkcdShapeBase(this->rule)) {
+    if (this->TagType() || HasHkcdShapeBase(this->rule)) {
       return 1;
     }
     return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
   }
   float GetRadius() const override {
-    return ReadValue<float>(data, ConvexRadiusOffset(this->rule.version),
+    return ReadValue<float>(data,
+                            this->TagMemberOffset(
+                                "radius", ConvexRadiusOffset(this->rule.version)),
                             this->DataNeedsEndianSwap());
   }
   Vector4A16 GetHalfExtents() const override {
-    return ReadValue<Vector4A16>(data,
-                                 this->rule.version == HK330B2 ? 16 : 32,
+    return ReadValue<Vector4A16>(data, this->TagMemberOffset(
+                                           "halfExtents",
+                                           this->rule.version == HK330B2 ? 16
+                                                                        : 32),
                                  this->DataNeedsEndianSwap());
   }
 

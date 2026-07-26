@@ -39,12 +39,45 @@ struct ClassName;
 
 struct ClassTemplateArgument {
   std::string_view argName;
-  ClassName *argType;
+  ClassName *argType{};
+  uint64 value{};
+};
+
+struct ClassMember {
+  std::string_view name;
+  uint32 flags{};
+  uint32 offset{};
+  ClassName *type{};
+};
+
+struct ClassInterface {
+  ClassName *type{};
+  uint32 offset{};
 };
 
 struct ClassName {
   std::string_view className;
   std::vector<ClassTemplateArgument> templateArguments;
+  ClassName *parent{};
+  ClassName *subType{};
+  uint32 optionals{};
+  uint32 format{};
+  uint32 version{};
+  uint32 byteSize{};
+  uint32 alignment{};
+  uint32 flags{};
+  uint32 attributeString{};
+  std::vector<ClassMember> members;
+  std::vector<ClassInterface> interfaces;
+
+  const ClassMember *FindMember(std::string_view name) const {
+    for (const auto &member : members) {
+      if (member.name == name) {
+        return &member;
+      }
+    }
+    return parent ? parent->FindMember(name) : nullptr;
+  }
 };
 
 struct classEntryFixup : hkChunk {
@@ -74,6 +107,11 @@ struct hkCompendium : IhkPackFile, hkCompendiumData {
 };
 
 struct hkxNewHeader : IhkPackFile {
+  struct ClassBinding {
+    const void *object{};
+    const ClassName *type{};
+  };
+
   hkToolset toolset;
   std::string dataBuffer;
   std::variant<hkCompendiumData, hkCompendium *> compendium = hkCompendiumData{};
@@ -91,6 +129,7 @@ struct hkxNewHeader : IhkPackFile {
   }
 
   VirtualClasses virtualClasses;
+  std::vector<ClassBinding> classBindings;
 
   VirtualClasses &GetAllClasses() override { return virtualClasses; }
   hkToolset GetToolset() const override { return toolset; }
@@ -99,4 +138,5 @@ struct hkxNewHeader : IhkPackFile {
   }
   void Load(BinReaderRef rd);
   void DumpClassNames(std::ostream &str);
+  const ClassName *GetClassType(const void *object) const;
 };

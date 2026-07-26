@@ -39,6 +39,7 @@ struct HK_EXTERN IhkPackFile {
   static Ptr Create(const std::string &fileName);
   static Ptr Create(BinReaderRef_e rd);
   static Ptr Create(BinReaderRef_e rd, IhkPackFile *compendium);
+  static Ptr ReadXML(BinReaderRef_e rd);
 
   void ToXML(const std::string &fileName, hkToolset toolset);
   void ToXML(pugi::xml_node node, hkToolset toolset);

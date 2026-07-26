@@ -24,6 +24,16 @@
 
 struct hkxHeader;
 
+struct hkxTypeInfo {
+  const unsigned char *data;
+  uint32 localFixups;
+  uint32 globalFixups;
+  uint32 virtualFixups;
+  uint32 end;
+};
+
+hkxTypeInfo GetPackfileTypes(hkToolset toolset, uint8 profile);
+
 struct hkxHeaderlayout {
   /*
   This is basically pointer size, so 4 bytes for x86 and 8 bytes for x64

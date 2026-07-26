@@ -7,7 +7,7 @@
     (at your option) any later version.
 */
 
-#include "fixups.hpp"
+#include "../fixups.hpp"
 #include "hklib/hk_packfile.hpp"
 #include "internal/hk_internal_api.hpp"
 #include "spike/io/binwritter.hpp"

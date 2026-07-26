@@ -23,6 +23,8 @@
 
 static constexpr uint32 HK_HEADER_TAG = CompileFourCC("TAG0");
 static constexpr uint32 HK_HEADER_TCM = CompileFourCC("TCM0");
+static constexpr uint32 HK_HEADER_OLD_TAG_0 = 0xcab00d1e;
+static constexpr uint32 HK_HEADER_OLD_TAG_1 = 0xd011face;
 
 struct hkxNewHeader;
 
@@ -140,3 +142,5 @@ struct hkxNewHeader : IhkPackFile {
   void DumpClassNames(std::ostream &str);
   const ClassName *GetClassType(const void *object) const;
 };
+
+IhkPackFile::Ptr ReadLegacyTagfile(BinReaderRef_e rd);

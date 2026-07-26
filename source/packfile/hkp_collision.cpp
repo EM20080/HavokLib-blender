@@ -17,7 +17,7 @@
 
 #include "internal/hkp_collision.hpp"
 #include "../format_old.hpp"
-#include "../format_new.hpp"
+#include "../tagfile/format_new.hpp"
 #include "base.hpp"
 #include "hklib/hk_packfile.hpp"
 #include "spike/type/pointer.hpp"

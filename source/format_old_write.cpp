@@ -35,6 +35,15 @@ const TypeEntry *FindTypes(hkToolset toolset, uint8 profile) {
   return nullptr;
 }
 
+hkxTypeInfo GetPackfileTypes(hkToolset toolset, uint8 profile) {
+  const TypeEntry *entry = FindTypes(toolset, profile);
+  if (!entry) {
+    return {};
+  }
+  return {entry->TypeData(), entry->typeLocal, entry->typeGlobal,
+          entry->typeVirtual, entry->typeExports};
+}
+
 uint32 Havok300MetadataValue(const unsigned char *data, size_t offset = 0) {
   return uint32(data[offset]) | (uint32(data[offset + 1]) << 8) |
          (uint32(data[offset + 2]) << 16) |

@@ -17,7 +17,7 @@
 
 #include "toolset.hpp"
 
-#include "format_new.hpp"
+#include "tagfile/format_new.hpp"
 #include "format_old.hpp"
 #include "hklib/hk_rootlevelcontainer.hpp"
 #include "internal/hk_internal_api.hpp"
@@ -40,6 +40,11 @@ IhkPackFile::Ptr IhkPackFile::Create(BinReaderRef_e rd,
     auto hdr = std::make_unique<hkxHeader>();
     hdr->Load(rd);
     return hdr;
+  } else if ((testerStruct.ID1 == HK_HEADER_OLD_TAG_0 &&
+              testerStruct.ID2 == HK_HEADER_OLD_TAG_1) ||
+             (testerStruct.ID1 == 0x1e0db0ca &&
+              testerStruct.ID2 == 0xcefa11d0)) {
+    return ReadLegacyTagfile(rd);
   } else if (testerStruct.ID2 == HK_HEADER_TAG) {
     auto hdr = std::make_unique<hkxNewHeader>();
     if (compendium) {
@@ -53,7 +58,7 @@ IhkPackFile::Ptr IhkPackFile::Create(BinReaderRef_e rd,
     return hdr;
   }
 
-  throw es::InvalidHeaderError(testerStruct.ID1);
+  return ReadXML(rd);
 }
 
 IhkPackFile::Ptr IhkPackFile::Create(BinReaderRef_e rd) {

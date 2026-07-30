@@ -44,6 +44,8 @@ static const std::map<JenHash, IhkVirtualClass *(*)(CRule)> hkConstrRegistry{
     hkCreatorAlias(hkpListShape, hkListShape),
     hkCreatorAlias(hkpConvexTranslateShape, hkConvexTranslateShape),
     hkCreatorAlias(hkpBoxShape, hkBoxShape),
+    hkCreatorAlias(hkpCapsuleShape, hkCapsuleShape),
+    hkCreatorAlias(hkpSphereShape, hkSphereShape),
     hkCreatorAlias(hkpCylinderShape, hkCylinderShape),
     hkCreatorAlias(hkpConvexVerticesShape, hkConvexVerticesShape),
     hkCreatorAlias(hkpStorageExtendedMeshShapeMeshSubpartStorage,
@@ -76,7 +78,8 @@ static const std::map<JenHash, IhkVirtualClass *(*)(CRule)> hkConstrRegistry{
               hkpStorageExtendedMeshShapeMeshSubpartStorage,
               hkpStorageExtendedMeshShapeShapeSubpartStorage, hkpListShape,
               hkpConvexTransformShape, hkpConvexTranslateShape, hkpBoxShape,
-              hkpCylinderShape, hkpConvexVerticesShape)};
+              hkpCapsuleShape, hkpSphereShape, hkpCylinderShape,
+              hkpConvexVerticesShape)};
 
 IhkVirtualClass *hkVirtualClass::Create(JenHash hash, CRule rule) {
   auto found = hkConstrRegistry.find(hash);

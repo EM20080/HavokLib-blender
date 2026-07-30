@@ -361,6 +361,20 @@ struct hkpBoxShape : hkpShape {
   virtual Vector4A16 GetHalfExtents() const = 0;
 };
 
+struct hkpCapsuleShape : hkpShape {
+  DECLARE_HKCLASS(hkpCapsuleShape)
+
+  virtual float GetRadius() const = 0;
+  virtual Vector4A16 GetVertexA() const = 0;
+  virtual Vector4A16 GetVertexB() const = 0;
+};
+
+struct hkpSphereShape : hkpShape {
+  DECLARE_HKCLASS(hkpSphereShape)
+
+  virtual float GetRadius() const = 0;
+};
+
 struct hkpCylinderShape : hkpShape {
   DECLARE_HKCLASS(hkpCylinderShape)
 

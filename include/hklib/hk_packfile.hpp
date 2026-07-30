@@ -48,4 +48,5 @@ struct HK_EXTERN IhkPackFile {
   void ToPackFile(const std::string &fileName, hkToolset toolset, uint32 rule,
                   bool m_metadata = false);
   void ToTagFile(const std::string &fileName, hkToolset toolset);
+  std::vector<uint8> ToTagFile(hkToolset toolset);
 };

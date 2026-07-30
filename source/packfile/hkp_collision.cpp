@@ -1788,12 +1788,13 @@ std::vector<char> MakeTriangleSubpart(
   return record;
 }
 
-std::vector<char> MakeShapeSubpart(size_t numShapes) {
+std::vector<char> MakeShapeSubpart(size_t numShapes, hkToolset version) {
   std::vector<char> record(kShapeSubpartFixedSize, 0);
   record[0] = 1;
   record[1] = 1;
   WriteField<uint16>(record, 10, 1);
-  WriteSimpleArrayHeader(record, 16, numShapes);
+  WriteSimpleArrayHeader(record, ShapeRecordChildShapesOffset(version),
+                         numShapes);
   WriteVectorField(record, 32, Vector4A16(0.0f, 0.0f, 0.0f, 1.0f));
   WriteVectorField(record, 48, Vector4A16(0.0f, 0.0f, 0.0f, 0.0f));
   return record;
@@ -3418,7 +3419,8 @@ struct hkpStorageExtendedMeshShapeWriter
     output.reserve(in->GetNumShapeSubparts() *
                    ShapeSubpartFixedSize(rule.version));
     for (auto subpart : in->ShapeSubparts()) {
-      auto record = MakeShapeSubpart(subpart ? subpart->GetNumShapes() : 0);
+      auto record =
+          MakeShapeSubpart(subpart ? subpart->GetNumShapes() : 0, rule.version);
       record.resize(ShapeSubpartFixedSize(rule.version), 0);
       AppendBuffer(output, record);
       BufferFields().erase(&record);
@@ -3453,7 +3455,8 @@ struct hkpStorageExtendedMeshShapeWriter
       wr.ApplyPadding();
       fixups.locals.emplace_back(
           shapeRecordsBegin +
-              (subpartIndex * ShapeSubpartFixedSize(rule.version)) + 16,
+              (subpartIndex * ShapeSubpartFixedSize(rule.version)) +
+              ShapeRecordChildShapesOffset(rule.version),
           wr.Tell());
       for (size_t shapeIndex = 0; shapeIndex < numShapes; shapeIndex++) {
         fixups.locals.emplace_back(wr.Tell(), subpart->GetShape(shapeIndex));
@@ -3742,6 +3745,30 @@ struct hkpBoxShapeWriter : HkpWriter<hkpBoxShape> {
     WriteField<float>(fixed, ConvexRadiusOffset(rule.version), in->GetRadius());
     WriteVectorField(fixed, rule.version == HK330B2 ? 16 : 32,
                      in->GetHalfExtents());
+    WriteBuffer(wr, fixed);
+  }
+};
+
+struct hkpCapsuleShapeWriter : HkpWriter<hkpCapsuleShape> {
+  using HkpWriter::HkpWriter;
+
+  void Save(BinWritterRef_e wr, hkFixups &) const {
+    auto fixed = Fixed(64);
+    WriteShapeBase(fixed, rule, in);
+    WriteField<float>(fixed, ConvexRadiusOffset(rule.version), in->GetRadius());
+    WriteVectorField(fixed, 32, in->GetVertexA());
+    WriteVectorField(fixed, 48, in->GetVertexB());
+    WriteBuffer(wr, fixed);
+  }
+};
+
+struct hkpSphereShapeWriter : HkpWriter<hkpSphereShape> {
+  using HkpWriter::HkpWriter;
+
+  void Save(BinWritterRef_e wr, hkFixups &) const {
+    auto fixed = Fixed(32);
+    WriteShapeBase(fixed, rule, in);
+    WriteField<float>(fixed, ConvexRadiusOffset(rule.version), in->GetRadius());
     WriteBuffer(wr, fixed);
   }
 };
@@ -6089,6 +6116,76 @@ struct hkpCylinderShapeMidInterface : hkpMidBase<hkpCylinderShapeInternalInterfa
   }
 };
 
+struct hkpCapsuleShapeMidInterface
+    : hkpMidBase<hkpCapsuleShapeInternalInterface> {
+  using Base = hkpMidBase<hkpCapsuleShapeInternalInterface>;
+  using Base::Base;
+  std::unique_ptr<hkpCapsuleShapeWriter> writer;
+
+  uint32 GetShapeType() const override {
+    if (this->TagType() || HasHkcdShapeBase(this->rule)) {
+      return 2;
+    }
+    return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
+  }
+  float GetRadius() const override {
+    return ReadValue<float>(
+        data,
+        this->TagMemberOffset("radius",
+                              ConvexRadiusOffset(this->rule.version)),
+                            this->DataNeedsEndianSwap());
+  }
+  Vector4A16 GetVertexA() const override {
+    return ReadValue<Vector4A16>(
+        data, this->TagMemberOffset("vertexA", 32),
+        this->DataNeedsEndianSwap());
+  }
+  Vector4A16 GetVertexB() const override {
+    return ReadValue<Vector4A16>(
+        data, this->TagMemberOffset("vertexB", 48),
+        this->DataNeedsEndianSwap());
+  }
+
+  void Reflect(const IhkVirtualClass *other) override {
+    writer = std::make_unique<hkpCapsuleShapeWriter>(
+        this->rule, checked_deref_cast<const hkpCapsuleShape>(other));
+  }
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    writer->Save(wr, fixups);
+  }
+};
+
+struct hkpSphereShapeMidInterface
+    : hkpMidBase<hkpSphereShapeInternalInterface> {
+  using Base = hkpMidBase<hkpSphereShapeInternalInterface>;
+  using Base::Base;
+  std::unique_ptr<hkpSphereShapeWriter> writer;
+
+  uint32 GetShapeType() const override {
+    if (this->TagType() || HasHkcdShapeBase(this->rule)) {
+      return 0;
+    }
+    return ReadValue<uint32>(data, 12, this->DataNeedsEndianSwap());
+  }
+  float GetRadius() const override {
+    return ReadValue<float>(
+        data,
+        this->TagMemberOffset("radius",
+                              ConvexRadiusOffset(this->rule.version)),
+                            this->DataNeedsEndianSwap());
+  }
+
+  void Reflect(const IhkVirtualClass *other) override {
+    writer = std::make_unique<hkpSphereShapeWriter>(
+        this->rule, checked_deref_cast<const hkpSphereShape>(other));
+  }
+
+  void Save(BinWritterRef_e wr, hkFixups &fixups) const override {
+    writer->Save(wr, fixups);
+  }
+};
+
 struct hkpConvexVerticesShapeMidInterface
     : hkpMidBase<hkpConvexVerticesShapeInternalInterface> {
   using Base = hkpMidBase<hkpConvexVerticesShapeInternalInterface>;
@@ -6342,6 +6439,14 @@ IhkVirtualClass *hkpConvexTranslateShapeInternalInterface::Create(CRule rule) {
 
 IhkVirtualClass *hkpBoxShapeInternalInterface::Create(CRule rule) {
   return new hkpBoxShapeMidInterface{rule};
+}
+
+IhkVirtualClass *hkpCapsuleShapeInternalInterface::Create(CRule rule) {
+  return new hkpCapsuleShapeMidInterface{rule};
+}
+
+IhkVirtualClass *hkpSphereShapeInternalInterface::Create(CRule rule) {
+  return new hkpSphereShapeMidInterface{rule};
 }
 
 IhkVirtualClass *hkpCylinderShapeInternalInterface::Create(CRule rule) {

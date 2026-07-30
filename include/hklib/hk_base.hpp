@@ -77,6 +77,8 @@ struct hkpListShape;
 struct hkpConvexTransformShape;
 struct hkpConvexTranslateShape;
 struct hkpBoxShape;
+struct hkpCapsuleShape;
+struct hkpSphereShape;
 struct hkpCylinderShape;
 struct hkpConvexVerticesShape;
 
@@ -132,6 +134,8 @@ struct IhkVirtualClass {
   virtual operator hkpConvexTransformShape const *() const { return nullptr; }
   virtual operator hkpConvexTranslateShape const *() const { return nullptr; }
   virtual operator hkpBoxShape const *() const { return nullptr; }
+  virtual operator hkpCapsuleShape const *() const { return nullptr; }
+  virtual operator hkpSphereShape const *() const { return nullptr; }
   virtual operator hkpCylinderShape const *() const { return nullptr; }
   virtual operator hkpConvexVerticesShape const *() const { return nullptr; }
   virtual ~IhkVirtualClass() = default;

@@ -13,7 +13,6 @@
 #include "spike/io/binwritter.hpp"
 #include <algorithm>
 #include <unordered_map>
-
 namespace {
 
     struct TagfileMember {
@@ -262,13 +261,6 @@ namespace {
         }
     }
 
-    void WriteUint64(std::string& data, uint32 offset, uint64 value) {
-        if (offset + sizeof(value) <= data.size()) {
-            std::copy_n(reinterpret_cast<const char*>(&value), sizeof(value),
-                data.data() + offset);
-        }
-    }
-
     const char* SdkVersion(hkToolset toolset) {
         switch (toolset) {
         case HK2015_1:
@@ -321,15 +313,27 @@ namespace {
             if (!instanceClass) {
                 return;
             }
-
-            const std::string_view className = instanceClass->GetClassName(HK2016_1);
-            const uint16 type = FindType(className);
+            const std::string_view className = instanceClass->GetClassName(toolset);
+            uint16 type = FindType(className);
+            if (!type &&
+                className == "hkpStorageExtendedMeshShapeMeshSubpartStorage")
+                type = FindType(
+                    "hkpStorageExtendedMeshShape::MeshSubpartStorage");
+            if (!type &&
+                className == "hkpStorageExtendedMeshShapeShapeSubpartStorage")
+                type = FindType(
+                    "hkpStorageExtendedMeshShape::ShapeSubpartStorage");
             if (!type) {
                 return;
             }
 
             std::unique_ptr<IhkVirtualClass> reflected(
-                hkVirtualClass::Create(JenHash(className), { HK2016_1, 0, 1 }));
+                hkVirtualClass::Create(
+                    JenHash(className),
+                    { className.starts_with("hkp")
+                          ? instanceClass->rule.version
+                          : toolset,
+                      0, 1 }));
             auto* reflectedClass = dynamic_cast<hkVirtualClass*>(reflected.get());
             if (!reflectedClass) {
                 return;
@@ -387,32 +391,12 @@ namespace {
 
             layout.size = value.byteSize;
             layout.alignment = value.alignment;
-            if (subType == TagfileString || subType == TagfilePointer) {
-                layout.size = layout.alignment = 8;
-            }
-            else if (subType == TagfileArray) {
-                if (name == "hkArray") {
-                    layout.size = 16;
-                    layout.alignment = 8;
-                }
-                else if (name == "hkRelArray") {
-                    layout.size = 4;
-                    layout.alignment = 2;
-                }
-                else {
-                    layout.size = layout.alignment = 8;
-                }
+            if (subType == TagfileString || subType == TagfilePointer ||
+                subType == TagfileArray) {
+                layout.size = layout.alignment = 4;
                 for (uint16 i = 0; i < value.numMembers; i++) {
                     const uint16 memberIndex = value.memberBegin + i;
-                    const std::string_view memberName = tagfileMembers[memberIndex].name;
-                    if (name == "hkArray") {
-                        memberOffsets[memberIndex] = memberName == "m_size" ? 8
-                            : memberName == "m_capacityAndFlags" ? 12
-                            : 0;
-                    }
-                    else if (name == "hkRelArray") {
-                        memberOffsets[memberIndex] = memberName == "m_size" ? 2 : 0;
-                    }
+                    memberOffsets[memberIndex] = 0;
                 }
             }
             else if (subType == TagfileTuple) {
@@ -432,24 +416,19 @@ namespace {
                 for (uint16 i = 0; i < value.numMembers; i++) {
                     const uint16 memberIndex = value.memberBegin + i;
                     const TagfileMember& member = tagfileMembers[memberIndex];
-                    if (toolset >= HK2016_2 && (member.flags & 1)) {
+                    if (member.flags & 1) {
                         continue;
                     }
                     const PortableLayout& memberLayout = BuildLayout(member.type);
-                    current = alignUp(current, std::max<uint32>(memberLayout.alignment, 1));
+                    current = alignUp(
+                        current, std::max<uint32>(memberLayout.alignment, 1));
                     memberOffsets[memberIndex] = current;
                     current += memberLayout.size;
-                    layout.alignment = std::max(layout.alignment, memberLayout.alignment);
+                    layout.alignment =
+                        std::max(layout.alignment, memberLayout.alignment);
                 }
-                layout.size = alignUp(current, std::max<uint32>(layout.alignment, 1));
-                if (name == "hkBaseObject") {
-                    layout.size = layout.alignment = 8;
-                }
-                else if (name == "hkReferencedObject") {
-                    layout.alignment = std::max<uint32>(layout.alignment, 8);
-                    layout.size =
-                        alignUp(std::max<uint32>(layout.size, 24), layout.alignment);
-                }
+                layout.size =
+                    alignUp(current, std::max<uint32>(layout.alignment, 1));
             }
             if (!layout.size && base && base != type) {
                 const PortableLayout& parent = BuildLayout(base);
@@ -477,6 +456,11 @@ namespace {
 
         uint32 NativeSize(uint16 type, const ReflectedObject& object) const {
             const std::string_view objectType = tagfileTypes[object.type].name;
+            const uint8 subType = SubType(type);
+            if (objectType.starts_with("hkp") &&
+                (subType == TagfileString || subType == TagfilePointer)) {
+                return 4;
+            }
             if ((objectType == "hkpStaticCompoundShape" ||
                 objectType == "hkpBvCompressedMeshShape") &&
                 std::string_view(tagfileTypes[type].name) ==
@@ -562,7 +546,11 @@ namespace {
             }
             for (uint16 i = 0; i < value.numMembers; i++) {
                 const TagfileMember& member = tagfileMembers[value.memberBegin + i];
-                if (toolset < HK2016_2 || !(member.flags & 1)) {
+                if (!(member.flags & 1) &&
+                    !(std::string_view(tagfileTypes[object.type].name).starts_with(
+                        "hkp") &&
+                      std::string_view(value.name) == "hkReferencedObject" &&
+                      std::string_view(member.name) == "propertyBag")) {
                     ProcessValue(member.type, object,
                         offset + NativeMemberOffset(type, member), pointers);
                 }
@@ -640,17 +628,13 @@ namespace {
                 else if (subType == TagfileArray && offset + 12 <= object.data.size()) {
                     const std::string_view objectType = tagfileTypes[object.type].name;
                     const uint32 countOffset =
-                        objectType == "hkpStaticCompoundShape" ||
-                        objectType == "hkpBvCompressedMeshShape"
-                        ? 4
-                        : 8;
+                        objectType.starts_with("hkp") ? 4 : 8;
                     const uint32 count = ReadUint32(object, offset + countOffset);
                     if (count) {
                         const uint16 element = tagfileTypes[base].pointer;
                         item = static_cast<uint32>(items.size());
                         items.push_back({ element, &object, destination.offset, 0, count,
-                                         SubType(element) == TagfilePointer ? PointerItem
-                                                                            : ValueItem });
+                                         ValueItem });
                         destinationItems[destination] = item;
                         ScanType(element);
                     }
@@ -669,7 +653,11 @@ namespace {
             for (uint16 i = 0; i < value.numMembers; i++) {
                 const uint16 memberIndex = value.memberBegin + i;
                 const TagfileMember& member = tagfileMembers[memberIndex];
-                if (toolset < HK2016_2 || !(member.flags & 1)) {
+                if (!(member.flags & 1) &&
+                    !(std::string_view(tagfileTypes[object.type].name).starts_with(
+                        "hkp") &&
+                      std::string_view(value.name) == "hkReferencedObject" &&
+                      std::string_view(member.name) == "propertyBag")) {
                     const uint32 outputOffset =
                         destinationOffset + memberOffsets[memberIndex];
                     if (!WriteMember(type, member, object, outputOffset)) {
@@ -742,6 +730,15 @@ namespace {
                 if (memberName == "userData")
                     return 60;
             }
+            else if (className == "hkpCapsuleShape") {
+                if (memberName == "vertexA")
+                    return 32;
+                if (memberName == "vertexB")
+                    return 48;
+            }
+            else if (className == "hkpConvexShape" && memberName == "radius") {
+                return 16;
+            }
             else if (className == "hkpBvTreeShape" && memberName == "bvTreeType") {
                 return 16;
             }
@@ -795,7 +792,7 @@ namespace {
                 subType == TagfileArray) {
                 const auto item = referenceItems.find({ &object, nativeOffset });
                 const uint32 itemIndex = item == referenceItems.end() ? 0 : item->second;
-                WriteUint64(data, destinationOffset, itemIndex);
+                WriteUint32(data, destinationOffset, itemIndex);
                 if (itemIndex) {
                     patches[base].push_back(destinationOffset);
                 }
@@ -1053,4 +1050,18 @@ void IhkPackFile::ToTagFile(const std::string& fileName, hkToolset toolset) {
 
     BinWritter writer(fileName);
     TagWriter(writer, GetAllClasses(), toolset, sdkVersion).Write();
+}
+
+std::vector<uint8> IhkPackFile::ToTagFile(hkToolset toolset) {
+    const char* sdkVersion = SdkVersion(toolset);
+    if (!sdkVersion) {
+        return {};
+    }
+
+    MemoryStreamBuffer buffer;
+    std::ostream stream(&buffer);
+    BinWritterRef_e writer(stream);
+    TagWriter(writer, GetAllClasses(), toolset, sdkVersion).Write();
+    const std::string data = buffer.TakeData();
+    return { data.begin(), data.end() };
 }

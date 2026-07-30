@@ -249,6 +249,34 @@ struct hkpBoxShapeInternalInterface : hkpBoxShape, hkVirtualClass {
   static IhkVirtualClass *Create(CRule rule);
 };
 
+struct hkpCapsuleShapeInternalInterface : hkpCapsuleShape, hkVirtualClass {
+  hkpCapsuleShapeInternalInterface() {
+    AddHash(hkpCapsuleShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
+  operator hkpCapsuleShape const *() const override { return this; }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset) const override {
+    return "hkpCapsuleShape";
+  }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
+struct hkpSphereShapeInternalInterface : hkpSphereShape, hkVirtualClass {
+  hkpSphereShapeInternalInterface() {
+    AddHash(hkpSphereShape::GetHash());
+    AddHash(hkpShape::GetHash());
+  }
+  operator hkpSphereShape const *() const override { return this; }
+  operator hkpShape const *() const override { return this; }
+  operator hkVirtualClass const *() const override { return this; }
+  std::string_view GetClassName(hkToolset) const override {
+    return "hkpSphereShape";
+  }
+  static IhkVirtualClass *Create(CRule rule);
+};
+
 struct hkpCylinderShapeInternalInterface : hkpCylinderShape, hkVirtualClass {
   hkpCylinderShapeInternalInterface() {
     AddHash(hkpCylinderShape::GetHash());
